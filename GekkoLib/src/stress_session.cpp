@@ -1,4 +1,4 @@
-#include "session.h"
+#include "session/stress_session.h"
 #include <cassert>
 #include <cstring>
 

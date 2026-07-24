@@ -1,4 +1,4 @@
-#include "session.h"
+#include "session/spectator_session.h"
 
 #include <cstring>
 

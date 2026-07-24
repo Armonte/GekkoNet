@@ -1,4 +1,4 @@
-#include "session.h"
+#include "session/game_session.h"
 
 #include <cassert>
 #include <cstring>

@@ -27,7 +27,11 @@
     <ClInclude Include="include\private\input.h" />
     <ClInclude Include="include\private\net.h" />
     <ClInclude Include="include\private\replay.h" />
-    <ClInclude Include="include\private\session.h" />
+    <ClInclude Include="include\private\session\session.h" />
+    <ClInclude Include="include\private\session\game_session.h" />
+    <ClInclude Include="include\private\session\spectator_session.h" />
+    <ClInclude Include="include\private\session\stress_session.h" />
+    <ClInclude Include="include\private\session\replay_session.h" />
     <ClInclude Include="include\private\storage.h" />
     <ClInclude Include="include\private\sync.h" />
   </ItemGroup>

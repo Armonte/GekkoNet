@@ -1,6 +1,8 @@
 #include "gekkonet.h"
 
-#include "session.h"
+#include "session/game_session.h"
+#include "session/spectator_session.h"
+#include "session/stress_session.h"
 
 GEKKONET_API bool gekko_create(GekkoSession** session, GekkoSessionType session_type)
 {
