@@ -56,6 +56,22 @@ namespace Gekko {
             return result;
         }
 
+        static std::vector<uint8_t> DeltaEncode(const uint8_t* data, u32 length, u32 stride) {
+            std::vector<uint8_t> result(length);
+            for (u32 i = 0; i < length; i++) {
+                result[i] = i < stride ? data[i] : (uint8_t)(data[i] ^ data[i - stride]);
+            }
+            return result;
+        }
+
+        static std::vector<uint8_t> DeltaDecode(const uint8_t* data, u32 length, u32 stride) {
+            std::vector<uint8_t> result(length);
+            for (u32 i = 0; i < length; i++) {
+                result[i] = i < stride ? data[i] : (uint8_t)(data[i] ^ result[i - stride]);
+            }
+            return result;
+        }
+
         Compression() = delete;
     };
 }
