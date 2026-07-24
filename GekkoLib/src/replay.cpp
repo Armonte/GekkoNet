@@ -36,7 +36,7 @@ const u8* Gekko::ReplaySystem::StopRecording(u32& length)
     const bool use_packed = !packed.empty() && packed.size() < _replay.inputs.size();
     if (use_packed) {
         _replay.inputs.swap(packed);
-        _replay.codec = ReplayBlob::DeltaRle;
+        _replay.compressed = true;
     }
 
     _bin_buffer.clear();
@@ -45,7 +45,7 @@ const u8* Gekko::ReplaySystem::StopRecording(u32& length)
 
     if (use_packed) {
         _replay.inputs.swap(packed);
-        _replay.codec = ReplayBlob::Raw;
+        _replay.compressed = false;
     }
 
     if (bad) {
@@ -109,10 +109,10 @@ bool Gekko::ReplaySystem::LoadReplay(const u8* replay_data, u32 length)
         return false;
     }
 
-    if (_replay.codec == ReplayBlob::DeltaRle) {
+    if (_replay.compressed) {
         auto delta = Compression::RLEDecode(_replay.inputs.data(), (u32)_replay.inputs.size());
         _replay.inputs = Compression::DeltaDecode(delta.data(), (u32)delta.size(), InputSize());
-        _replay.codec = ReplayBlob::Raw;
+        _replay.compressed = false;
     }
 
     _current_frame = 0;

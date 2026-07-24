@@ -10,11 +10,9 @@ namespace Gekko {
         static constexpr u32 MAGIC = 0x474B5250; // GKRP
         static constexpr u32 FORMAT_VERSION = 1;
 
-        enum Codec : u8 { Raw, DeltaRle };
-
         u32 header = MAGIC;
         u32 version = FORMAT_VERSION;
-        Codec codec = Raw;
+        bool compressed = false;
 
         GekkoConfig config = {};
 
