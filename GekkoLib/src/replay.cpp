@@ -6,17 +6,29 @@
 #include "compression.h"
 #include "zpp/zpp_bits.h"
 
-void Gekko::ReplaySystem::StartRecording(GekkoConfig config, const u8* initial_state)
+bool Gekko::ReplaySystem::StartRecording(GekkoConfig config, Frame frame, bool save_state)
 {
     Reset();
 
     _replay.config = config;
 
-    if (initial_state && config.state_size > 0) {
-        _replay.initial_state.assign(initial_state, initial_state + config.state_size);
+    if (InputSize() == 0) {
+        Reset();
+        return false;
+    }
+
+    _start_frame = frame;
+    _last_recorded_frame = frame - 1;
+
+    _needs_state = save_state && config.state_size > 0;
+
+    if (_needs_state) {
+        _state.state = std::make_unique<u8[]>(config.state_size);
     }
 
     _mode = Recording;
+
+    return true;
 }
 
 const u8* Gekko::ReplaySystem::StopRecording(u32& length)
@@ -24,6 +36,8 @@ const u8* Gekko::ReplaySystem::StopRecording(u32& length)
     length = 0;
 
     if (_mode != Recording) return nullptr;
+
+    RecordPendingState();
 
     const u32 block = InputSize();
 
@@ -48,16 +62,40 @@ const u8* Gekko::ReplaySystem::StopRecording(u32& length)
         _replay.compressed = false;
     }
 
+    _mode = None;
+
     if (bad) {
         printf("failed to serialize replay data\n");
         return nullptr;
     }
 
-    _mode = None;
-
     length = (u32)_bin_buffer.size();
 
     return _bin_buffer.data();
+}
+
+void Gekko::ReplaySystem::RecordInputs(SyncSystem& sync)
+{
+    if (_mode != Recording || _needs_state) return;
+
+    const Frame incorrect = sync.GetMinIncorrectFrame();
+
+    if (incorrect != GameInput::NULL_FRAME) {
+        _last_recorded_frame = std::min(_last_recorded_frame, incorrect - 1);
+    }
+
+    const Frame received = sync.GetMinReceivedFrame();
+
+    std::unique_ptr<u8[]> inputs;
+    for (Frame frame = _last_recorded_frame + 1; frame <= received; frame++) {
+        if (!sync.GetSpectatorInputs(inputs, frame)) {
+            break;
+        }
+
+        RecordInput(frame, inputs.get());
+
+        _last_recorded_frame = frame;
+    }
 }
 
 void Gekko::ReplaySystem::RecordInput(Frame frame, const u8* input)
@@ -66,10 +104,6 @@ void Gekko::ReplaySystem::RecordInput(Frame frame, const u8* input)
 
     const u32 size = InputSize();
     if (size == 0) return;
-
-    if (_replay.inputs.empty()) {
-        _start_frame = frame;
-    }
 
     if (frame < _start_frame) return;
 
@@ -82,6 +116,45 @@ void Gekko::ReplaySystem::RecordInput(Frame frame, const u8* input)
     std::memcpy(_replay.inputs.data() + index * size, input, size);
 }
 
+void Gekko::ReplaySystem::RecordState(const u8* state, u32 length, Frame frame)
+{
+    if (_mode != Recording || !state || length == 0) return;
+
+    if (length > _replay.config.state_size) return;
+
+    _replay.initial_state.assign(state, state + length);
+
+    _replay.initial_state.resize(_replay.config.state_size);
+
+    _start_frame = frame + 1;
+    _last_recorded_frame = frame;
+
+    _needs_state = false;
+}
+
+bool Gekko::ReplaySystem::NeedsState()
+{
+    RecordPendingState();
+
+    return _mode == Recording && _needs_state;
+}
+
+Gekko::StateEntry* Gekko::ReplaySystem::PendingState()
+{
+    _pending_state = true;
+
+    return &_state;
+}
+
+void Gekko::ReplaySystem::RecordPendingState()
+{
+    if (!_pending_state) return;
+
+    _pending_state = false;
+
+    RecordState(_state.state.get(), _state.state_len, _state.frame);
+}
+
 bool Gekko::ReplaySystem::LoadReplay(const u8* replay_data, u32 length)
 {
     Reset();
@@ -89,9 +162,17 @@ bool Gekko::ReplaySystem::LoadReplay(const u8* replay_data, u32 length)
     if (!replay_data || length == 0) return false;
 
     _bin_buffer.assign(replay_data, replay_data + length);
-    zpp::bits::in in(_bin_buffer);
 
-    if (failure(in(_replay))) {
+    bool bad = true;
+    try {
+        zpp::bits::in in(_bin_buffer);
+        bad = failure(in(_replay));
+    }
+    catch (...) {
+        bad = true;
+    }
+
+    if (bad) {
         printf("failed to deserialize replay data\n");
         Reset();
         return false;
@@ -105,6 +186,19 @@ bool Gekko::ReplaySystem::LoadReplay(const u8* replay_data, u32 length)
 
     if (_replay.version != ReplayBlob::FORMAT_VERSION) {
         printf("unsupported replay version %u\n", _replay.version);
+        Reset();
+        return false;
+    }
+
+    if (InputSize() == 0) {
+        printf("invalid replay config\n");
+        Reset();
+        return false;
+    }
+
+    if (!_replay.initial_state.empty() &&
+        _replay.initial_state.size() != _replay.config.state_size) {
+        printf("invalid replay state size\n");
         Reset();
         return false;
     }
@@ -164,8 +258,14 @@ void Gekko::ReplaySystem::Reset()
     _mode = None;
     _start_frame = 0;
     _current_frame = 0;
+    _last_recorded_frame = GameInput::NULL_FRAME;
+
+    _needs_state = false;
+    _pending_state = false;
 
     _bin_buffer.clear();
+
+    _state = StateEntry();
 
     _replay = {};
 }
