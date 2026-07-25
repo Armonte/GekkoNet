@@ -178,14 +178,21 @@ typedef struct GekkoNetworkStats {
 } GekkoNetworkStats;
 
 // Public Facing API
+
+// creates a session of the given type. the handle has to be empty.
 GEKKONET_API bool gekko_create(GekkoSession** session, GekkoSessionType session_type);
 
+// destroys the session and clears the handle.
 GEKKONET_API bool gekko_destroy(GekkoSession** session);
 
+// applies the config to the session, call this before adding any actors.
 GEKKONET_API void gekko_start(GekkoSession* session, GekkoConfig* config);
 
+// sets the adapter the session sends and receives its packets with.
 GEKKONET_API void gekko_net_adapter_set(GekkoSession* session, GekkoNetAdapter* adapter);
 
+// adds a player or spectator and returns its handle, or -1 when it doesnt fit the session.
+// remote actors require an address, local ones dont.
 GEKKONET_API int gekko_add_actor(GekkoSession* session, GekkoPlayerType player_type, GekkoNetAddress* addr);
 
 // disconnects an actor without destroying the session.
@@ -197,26 +204,39 @@ GEKKONET_API bool gekko_disconnect_actor(GekkoSession* session, int actor);
 // a timeout of 0 disables automatic disconnecting. defaults to 5000ms.
 GEKKONET_API void gekko_set_disconnect_timeout(GekkoSession* session, unsigned int timeout);
 
+// holds a local players input back by the given amount of frames before the
+// session uses it, trading input lag for less mispredictions.
 GEKKONET_API void gekko_set_local_delay(GekkoSession* session, int player, unsigned char delay);
 
+// simulates the given amount of frames ahead every update and rewinds them
+// on the next one, which hides local input delay.
 GEKKONET_API void gekko_set_runahead(GekkoSession* session, unsigned char runahead);
 
+// hands the input of a local player to the session, once per player per frame.
 GEKKONET_API void gekko_add_local_input(GekkoSession* session, int player, void* input);
 
+// advances the session and returns the events the game has to handle in order.
 GEKKONET_API GekkoGameEvent** gekko_update_session(GekkoSession* session, int* count);
 
+// returns the events the last update raised, like actors connecting or a replay finishing.
 GEKKONET_API GekkoSessionEvent** gekko_session_events(GekkoSession* session, int* count);
 
+// the average amount of frames this session runs ahead of its remote players.
 GEKKONET_API float gekko_frames_ahead(GekkoSession* session);
 
+// copies the network stats gathered for a remote actor or spectator.
 GEKKONET_API void gekko_network_stats(GekkoSession* session, int player, GekkoNetworkStats* stats);
 
+// sends and receives packets without advancing the session.
 GEKKONET_API void gekko_network_poll(GekkoSession* session);
 
 #ifndef GEKKONET_NO_ASIO
 
+// creates the built in UDP adapter bound to the given port.
+// calling this again closes the socket the previous call opened.
 GEKKONET_API GekkoNetAdapter* gekko_default_adapter(unsigned short port);
 
+// closes the socket the built in adapter uses.
 GEKKONET_API bool gekko_default_adapter_destroy();
 
 #endif // GEKKONET_NO_ASIO
