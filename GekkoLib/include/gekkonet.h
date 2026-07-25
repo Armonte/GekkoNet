@@ -59,6 +59,7 @@ typedef enum GekkoSessionType {
     GekkoGameSession, // session for an active player.
     GekkoStressSession, // session to test your local simulation for state desyncs.
     GekkoSpectateSession, // session for spectators watching an active player.
+    GekkoReplaySession, // session which plays back a recorded replay.
 } GekkoSessionType;
 
 typedef struct GekkoConfig {
@@ -142,7 +143,8 @@ typedef enum GekkoSessionEventType {
     GekkoSessionStarted,
     GekkoSpectatorPaused,
     GekkoSpectatorUnpaused,
-    GekkoDesyncDetected
+    GekkoDesyncDetected,
+    GekkoReplayFinished
 } GekkoSessionEventType;
 
 typedef struct GekkoSessionEvent {
@@ -229,6 +231,20 @@ GEKKONET_API void gekko_network_stats(GekkoSession* session, int player, GekkoNe
 
 // sends and receives packets without advancing the session.
 GEKKONET_API void gekko_network_poll(GekkoSession* session);
+
+// starts recording the confirmed inputs of a session. replay sessions cannot record.
+// when save_initial_state is set the session stores the gamestate the recording starts at,
+// issuing a save event whenever it doesnt hold one already, so playback can start from there.
+GEKKONET_API bool gekko_start_recording(GekkoSession* session, bool save_initial_state);
+
+// stops the recording and returns the serialized replay.
+// the returned memory is owned by the session and stays valid
+// until the session records again or gets destroyed.
+GEKKONET_API const unsigned char* gekko_stop_recording(GekkoSession* session, unsigned int* length);
+
+// loads a serialized replay into a replay session.
+// the config is stored within the replay so calling gekko_start is not needed.
+GEKKONET_API bool gekko_load_replay(GekkoSession* session, const unsigned char* replay_data, unsigned int length);
 
 #ifndef GEKKONET_NO_ASIO
 

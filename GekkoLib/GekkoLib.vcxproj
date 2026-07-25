@@ -44,6 +44,7 @@
     <ClCompile Include="src\net.cpp" />
     <ClCompile Include="src\player.cpp" />
     <ClCompile Include="src\replay.cpp" />
+    <ClCompile Include="src\replay_session.cpp" />
     <ClCompile Include="src\spectator_session.cpp" />
     <ClCompile Include="src\storage.cpp" />
     <ClCompile Include="src\stress_session.cpp" />

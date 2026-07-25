@@ -41,6 +41,10 @@ namespace Gekko {
 
         void AddLoadEvent(SyncSystem& sync, StateStorage& storage);
 
+        void AddStateSaveEvent(Frame frame, StateEntry* state);
+
+        void AddStateLoadEvent(Frame frame, u8* state, u32 state_len);
+
         void AddRunaheadSaveEvent(SyncSystem& sync, StateStorage& storage);
 
         void AddRunaheadLoadEvent(StateStorage& storage);
@@ -94,6 +98,8 @@ namespace Gekko {
         void AddSpectatorUnpausedEvent();
 
         void AddDesyncDetectedEvent(Frame frame, Handle remote, u32 check_local, u32 check_remote);
+
+        void AddReplayFinishedEvent();
 
     private:
         void AddEvent(GekkoSessionEvent* ev);
