@@ -5,6 +5,7 @@
 #include "session.h"
 #include "backend.h"
 #include "event.h"
+#include "replay.h"
 #include "sync.h"
 
 namespace Gekko {
@@ -31,6 +32,10 @@ namespace Gekko {
 
         void NetworkPoll() override;
 
+        bool StartRecording(bool save_initial_state) override;
+
+        const u8* StopRecording(u32& length) override;
+
 	private:
 		void Poll();
 
@@ -39,6 +44,8 @@ namespace Gekko {
 		void HandleReceivedInputs();
 
         bool ShouldDelaySpectator();
+
+        void UpdateRecording();
 
 	private:
 		bool _started;
@@ -56,5 +63,7 @@ namespace Gekko {
 		MessageSystem _msg;
 
         GameEventSystem _game_events;
+
+        ReplaySystem _replay;
 	};
 }

@@ -73,6 +73,9 @@ GekkoGameEvent** Gekko::StressSession::UpdateSession(i32* count)
     _session_events.Reset();
     _game_events.Reset();
 
+    // store the frames that went by for the replay
+    UpdateRecording();
+
     Frame current = _sync.GetCurrentFrame();
     if (_check_distance > 0 && current > _check_distance) {
         // once whe have gone far enough forward start rollback back and comparing checksums
@@ -102,6 +105,29 @@ GekkoSessionEvent** Gekko::StressSession::Events(i32* count)
 {
     *count = (i32)_session_events.GetRecentEvents().size();
     return _session_events.GetRecentEvents().data();
+}
+
+bool Gekko::StressSession::StartRecording(bool save_initial_state)
+{
+    return _replay.StartRecording(_config, _sync.GetCurrentFrame(), save_initial_state);
+}
+
+const u8* Gekko::StressSession::StopRecording(u32& length)
+{
+    return _replay.StopRecording(length);
+}
+
+void Gekko::StressSession::UpdateRecording()
+{
+    if (!_replay.IsRecording()) {
+        return;
+    }
+
+    if (_replay.NeedsState()) {
+        _game_events.AddStateSaveEvent(_sync.GetCurrentFrame() - 1, _replay.PendingState());
+    }
+
+    _replay.RecordInputs(_sync);
 }
 
 void Gekko::StressSession::HandleRollback()

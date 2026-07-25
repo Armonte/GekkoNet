@@ -102,6 +102,9 @@ GekkoGameEvent** Gekko::SpectatorSession::UpdateSession(i32* count)
         // reset the game event buffer before doing anything else
         _game_events.Reset();
 
+        // store the frames that went by for the replay
+        UpdateRecording();
+
         // spectator session buffer
         if (ShouldDelaySpectator()) {
             *count = _game_events.Count();
@@ -142,6 +145,29 @@ void Gekko::SpectatorSession::NetworkStats(i32 player, GekkoNetworkStats* stats)
 void Gekko::SpectatorSession::NetworkPoll()
 {
     Poll();
+}
+
+bool Gekko::SpectatorSession::StartRecording(bool save_initial_state)
+{
+    return _replay.StartRecording(_config, _sync.GetCurrentFrame(), save_initial_state);
+}
+
+const u8* Gekko::SpectatorSession::StopRecording(u32& length)
+{
+    return _replay.StopRecording(length);
+}
+
+void Gekko::SpectatorSession::UpdateRecording()
+{
+    if (!_replay.IsRecording()) {
+        return;
+    }
+
+    if (_replay.NeedsState()) {
+        _game_events.AddStateSaveEvent(_sync.GetCurrentFrame() - 1, _replay.PendingState());
+    }
+
+    _replay.RecordInputs(_sync);
 }
 
 void Gekko::SpectatorSession::Poll()

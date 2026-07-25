@@ -8,6 +8,7 @@
 #include "session.h"
 #include "backend.h"
 #include "event.h"
+#include "replay.h"
 #include "sync.h"
 #include "storage.h"
 
@@ -29,10 +30,16 @@ namespace Gekko {
 
         GekkoSessionEvent** Events(i32* count) override;
 
+        bool StartRecording(bool save_initial_state) override;
+
+        const u8* StopRecording(u32& length) override;
+
     private:
         void HandleRollback();
 
         void CheckForDesyncs(Frame check_frame);
+
+        void UpdateRecording();
 
     private:
         GekkoConfig _config;
@@ -44,6 +51,8 @@ namespace Gekko {
         SessionEventSystem _session_events;
 
         GameEventSystem _game_events;
+
+        ReplaySystem _replay;
 
         std::vector<Player> _locals;
 
