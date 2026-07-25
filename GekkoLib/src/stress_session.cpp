@@ -39,11 +39,6 @@ void Gekko::StressSession::SetLocalDelay(i32 player, u8 delay)
     }
 }
 
-void Gekko::StressSession::SetNetAdapter(GekkoNetAdapter* adapter)
-{
-   // no adapters used in stress sessions.
-}
-
 i32 Gekko::StressSession::AddActor(GekkoPlayerType type, GekkoNetAddress* addr)
 {
     if (type != GekkoLocalPlayer) return -1;
@@ -58,12 +53,6 @@ i32 Gekko::StressSession::AddActor(GekkoPlayerType type, GekkoNetAddress* addr)
     _locals.push_back(Player(new_handle, type, address.get()));
 
     return new_handle;
-}
-
-bool Gekko::StressSession::DisconnectActor(i32 actor)
-{
-    // no-op: stress sessions have no connections
-    return false;
 }
 
 void Gekko::StressSession::AddLocalInput(i32 player, void* input)
@@ -113,21 +102,6 @@ GekkoSessionEvent** Gekko::StressSession::Events(i32* count)
 {
     *count = (i32)_session_events.GetRecentEvents().size();
     return _session_events.GetRecentEvents().data();
-}
-
-f32 Gekko::StressSession::FramesAhead()
-{
-    return 0.f;
-}
-
-void Gekko::StressSession::NetworkStats(i32 player, GekkoNetworkStats* stats)
-{
-    // no stats for now.
-}
-
-void Gekko::StressSession::NetworkPoll()
-{
-    // stress sessions are local only
 }
 
 void Gekko::StressSession::HandleRollback()

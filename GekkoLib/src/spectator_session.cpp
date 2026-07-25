@@ -34,11 +34,6 @@ void Gekko::SpectatorSession::Init(GekkoConfig* config)
     _delay_spectator = (_config.spectator_delay > 0);
 }
 
-void Gekko::SpectatorSession::SetLocalDelay(i32 player, u8 delay)
-{
-    // no-op: spectators don't have local players
-}
-
 void Gekko::SpectatorSession::SetNetAdapter(GekkoNetAdapter* adapter)
 {
     _host = adapter;
@@ -91,11 +86,6 @@ void Gekko::SpectatorSession::SetDisconnectTimeout(u32 timeout)
     _msg.SetDisconnectTimeout(timeout);
 }
 
-void Gekko::SpectatorSession::AddLocalInput(i32 player, void* input)
-{
-    // no-op: spectators don't add local input
-}
-
 GekkoGameEvent** Gekko::SpectatorSession::UpdateSession(i32* count)
 {
     // reset session events
@@ -132,11 +122,6 @@ GekkoSessionEvent** Gekko::SpectatorSession::Events(i32* count)
 {
     *count = (i32)_msg.session_events.GetRecentEvents().size();
     return _msg.session_events.GetRecentEvents().data();
-}
-
-f32 Gekko::SpectatorSession::FramesAhead()
-{
-    return 0.f;
 }
 
 void Gekko::SpectatorSession::NetworkStats(i32 player, GekkoNetworkStats* stats)

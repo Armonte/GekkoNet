@@ -6,17 +6,20 @@
 // define GekkoSession internally
 struct GekkoSession {
     virtual void Init(GekkoConfig* config) = 0;
-    virtual void SetLocalDelay(i32 player, u8 delay) = 0;
-    virtual void SetRunahead(u8 runahead) = 0;
-    virtual void SetNetAdapter(GekkoNetAdapter* adapter) = 0;
-    virtual i32 AddActor(GekkoPlayerType type, GekkoNetAddress* addr) = 0;
-    virtual bool DisconnectActor(i32 actor) = 0;
-    virtual void SetDisconnectTimeout(u32 timeout) = 0;
-    virtual void AddLocalInput(i32 player, void* input) = 0;
+    virtual void SetLocalDelay(i32 player, u8 delay) {}
+    virtual void SetRunahead(u8 runahead) {}
+    virtual void SetNetAdapter(GekkoNetAdapter* adapter) {}
+    virtual i32 AddActor(GekkoPlayerType type, GekkoNetAddress* addr) { return -1; }
+    virtual bool DisconnectActor(i32 actor) { return false; }
+    virtual void SetDisconnectTimeout(u32 timeout) {}
+    virtual void AddLocalInput(i32 player, void* input) {}
     virtual GekkoGameEvent** UpdateSession(i32* count) = 0;
     virtual GekkoSessionEvent** Events(i32* count) = 0;
-    virtual f32 FramesAhead() = 0;
-    virtual void NetworkStats(i32 player, GekkoNetworkStats* stats) = 0;
-    virtual void NetworkPoll() = 0;
+    virtual f32 FramesAhead() { return 0.f; }
+    virtual void NetworkStats(i32 player, GekkoNetworkStats* stats) {}
+    virtual void NetworkPoll() {}
+    virtual bool StartRecording(bool save_initial_state) { return false; }
+    virtual const u8* StopRecording(u32& length) { return nullptr; }
+    virtual bool LoadReplay(const u8* replay_data, u32 length) { return false; }
     virtual ~GekkoSession() = default;
 };
