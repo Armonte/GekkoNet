@@ -27,6 +27,9 @@ I am personally not a big fan of the callback based approach of GGPO hence why I
 	- Spectator Delay Settings.
 - Stress Sessions
     - To help find desyncs it your local state, This is a local session which constantly rolls the simulation back over a user-specified check distance.
+- Replays
+	- Record the inputs of any session, optionally together with the gamestate the recording starts at.
+	- Replay Sessions play the recording back frame by frame.
 - Limited Saving 
 	- Save the gamestate less often which might help games where saving the game is expensive. This is at the cost of more iterations advancing the gamestate during rollback.
 - Abstracted socket manager.
@@ -39,7 +42,6 @@ I am personally not a big fan of the callback based approach of GGPO hence why I
 - Joining a session that's already in progress as a spectator (and maybe as a player later)
 
 ### Maybe Later
-- Replays
 - Game engine plugins
 
 ## Getting Started
