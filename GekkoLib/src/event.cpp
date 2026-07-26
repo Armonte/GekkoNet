@@ -165,6 +165,13 @@ void Gekko::SessionEventSystem::AddDesyncDetectedEvent(Frame frame, Handle remot
     AddEvent(ev);
 }
 
+void Gekko::SessionEventSystem::AddReplayFinishedEvent()
+{
+    auto ev = _event_buffer.GetEvent();
+    ev->type = GekkoReplayFinished;
+    AddEvent(ev);
+}
+
 void Gekko::GameEventSystem::Init(u32 input_size) {
     _event_buffer.Init(input_size);
     _event_buffer.Reset();
@@ -199,18 +206,7 @@ void Gekko::GameEventSystem::AddSaveEvent(SyncSystem& sync, StateStorage& storag
 {
     const Frame frame_to_save = sync.GetCurrentFrame();
 
-    auto state = storage.GetState(frame_to_save);
-    state->frame = frame_to_save;
-
-    _current_events.push_back(_event_buffer.GetEvent(false));
-
-    auto event = _current_events.back();
-    event->type = GekkoSaveEvent;
-
-    event->data.save.frame = frame_to_save;
-    event->data.save.state = state->state.get();
-    event->data.save.checksum = &state->checksum;
-    event->data.save.state_len = &state->state_len;
+    AddStateSaveEvent(frame_to_save, storage.GetState(frame_to_save));
 
     if (last_saved_frame) {
         *last_saved_frame = frame_to_save;
@@ -223,46 +219,46 @@ void Gekko::GameEventSystem::AddLoadEvent(SyncSystem& sync, StateStorage& storag
 
     auto state = storage.GetState(frame_to_load);
 
-    _current_events.push_back(_event_buffer.GetEvent(false));
-
-    auto event = _current_events.back();
-    event->type = GekkoLoadEvent;
-
-    event->data.load.frame = frame_to_load;
-    event->data.load.state = state->state.get();
-    event->data.load.state_len = state->state_len;
+    AddStateLoadEvent(frame_to_load, state->state.get(), state->state_len);
 }
 
-void Gekko::GameEventSystem::AddRunaheadSaveEvent(SyncSystem& sync, StateStorage& storage)
+void Gekko::GameEventSystem::AddStateSaveEvent(Frame frame, StateEntry* state)
 {
-    const Frame frame_to_save = sync.GetCurrentFrame();
-
-    auto state = storage.GetRunaheadState();
-    state->frame = frame_to_save;
+    state->frame = frame;
 
     _current_events.push_back(_event_buffer.GetEvent(false));
 
     auto event = _current_events.back();
     event->type = GekkoSaveEvent;
 
-    event->data.save.frame = frame_to_save;
+    event->data.save.frame = frame;
     event->data.save.state = state->state.get();
     event->data.save.checksum = &state->checksum;
     event->data.save.state_len = &state->state_len;
+}
+
+void Gekko::GameEventSystem::AddStateLoadEvent(Frame frame, u8* state, u32 state_len)
+{
+    _current_events.push_back(_event_buffer.GetEvent(false));
+
+    auto event = _current_events.back();
+    event->type = GekkoLoadEvent;
+
+    event->data.load.frame = frame;
+    event->data.load.state = state;
+    event->data.load.state_len = state_len;
+}
+
+void Gekko::GameEventSystem::AddRunaheadSaveEvent(SyncSystem& sync, StateStorage& storage)
+{
+    AddStateSaveEvent(sync.GetCurrentFrame(), storage.GetRunaheadState());
 }
 
 void Gekko::GameEventSystem::AddRunaheadLoadEvent(StateStorage& storage)
 {
     auto state = storage.GetRunaheadState();
 
-    _current_events.push_back(_event_buffer.GetEvent(false));
-
-    auto event = _current_events.back();
-    event->type = GekkoLoadEvent;
-
-    event->data.load.frame = state->frame;
-    event->data.load.state = state->state.get();
-    event->data.load.state_len = state->state_len;
+    AddStateLoadEvent(state->frame, state->state.get(), state->state_len);
 }
 
 std::vector<GekkoGameEvent*>& Gekko::GameEventSystem::GetEvents()

@@ -1,4 +1,4 @@
-#include "session.h"
+#include "session/spectator_session.h"
 
 #include <cstring>
 
@@ -32,11 +32,6 @@ void Gekko::SpectatorSession::Init(GekkoConfig* config)
 
     // start paused so the buffer fills before playback begins
     _delay_spectator = (_config.spectator_delay > 0);
-}
-
-void Gekko::SpectatorSession::SetLocalDelay(i32 player, u8 delay)
-{
-    // no-op: spectators don't have local players
 }
 
 void Gekko::SpectatorSession::SetNetAdapter(GekkoNetAdapter* adapter)
@@ -91,11 +86,6 @@ void Gekko::SpectatorSession::SetDisconnectTimeout(u32 timeout)
     _msg.SetDisconnectTimeout(timeout);
 }
 
-void Gekko::SpectatorSession::AddLocalInput(i32 player, void* input)
-{
-    // no-op: spectators don't add local input
-}
-
 GekkoGameEvent** Gekko::SpectatorSession::UpdateSession(i32* count)
 {
     // reset session events
@@ -111,6 +101,9 @@ GekkoGameEvent** Gekko::SpectatorSession::UpdateSession(i32* count)
     if (AllActorsValid()) {
         // reset the game event buffer before doing anything else
         _game_events.Reset();
+
+        // store the frames that went by for the replay
+        UpdateRecording();
 
         // spectator session buffer
         if (ShouldDelaySpectator()) {
@@ -134,11 +127,6 @@ GekkoSessionEvent** Gekko::SpectatorSession::Events(i32* count)
     return _msg.session_events.GetRecentEvents().data();
 }
 
-f32 Gekko::SpectatorSession::FramesAhead()
-{
-    return 0.f;
-}
-
 void Gekko::SpectatorSession::NetworkStats(i32 player, GekkoNetworkStats* stats)
 {
     for (auto& actor : _msg.remotes) {
@@ -157,6 +145,29 @@ void Gekko::SpectatorSession::NetworkStats(i32 player, GekkoNetworkStats* stats)
 void Gekko::SpectatorSession::NetworkPoll()
 {
     Poll();
+}
+
+bool Gekko::SpectatorSession::StartRecording(bool save_initial_state, bool disable_compression)
+{
+    return _replay.StartRecording(_config, _sync.GetCurrentFrame(), save_initial_state, disable_compression);
+}
+
+const u8* Gekko::SpectatorSession::StopRecording(u32& length)
+{
+    return _replay.StopRecording(length);
+}
+
+void Gekko::SpectatorSession::UpdateRecording()
+{
+    if (!_replay.IsRecording()) {
+        return;
+    }
+
+    if (_replay.NeedsState()) {
+        _game_events.AddStateSaveEvent(_sync.GetCurrentFrame() - 1, _replay.PendingState());
+    }
+
+    _replay.RecordInputs(_sync);
 }
 
 void Gekko::SpectatorSession::Poll()

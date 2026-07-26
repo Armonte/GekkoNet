@@ -1,4 +1,4 @@
-#include "session.h"
+#include "session/stress_session.h"
 #include <cassert>
 #include <cstring>
 
@@ -39,11 +39,6 @@ void Gekko::StressSession::SetLocalDelay(i32 player, u8 delay)
     }
 }
 
-void Gekko::StressSession::SetNetAdapter(GekkoNetAdapter* adapter)
-{
-   // no adapters used in stress sessions.
-}
-
 i32 Gekko::StressSession::AddActor(GekkoPlayerType type, GekkoNetAddress* addr)
 {
     if (type != GekkoLocalPlayer) return -1;
@@ -58,12 +53,6 @@ i32 Gekko::StressSession::AddActor(GekkoPlayerType type, GekkoNetAddress* addr)
     _locals.push_back(Player(new_handle, type, address.get()));
 
     return new_handle;
-}
-
-bool Gekko::StressSession::DisconnectActor(i32 actor)
-{
-    // no-op: stress sessions have no connections
-    return false;
 }
 
 void Gekko::StressSession::AddLocalInput(i32 player, void* input)
@@ -83,6 +72,9 @@ GekkoGameEvent** Gekko::StressSession::UpdateSession(i32* count)
     _game_events.Clear();
     _session_events.Reset();
     _game_events.Reset();
+
+    // store the frames that went by for the replay
+    UpdateRecording();
 
     Frame current = _sync.GetCurrentFrame();
     if (_check_distance > 0 && current > _check_distance) {
@@ -115,19 +107,27 @@ GekkoSessionEvent** Gekko::StressSession::Events(i32* count)
     return _session_events.GetRecentEvents().data();
 }
 
-f32 Gekko::StressSession::FramesAhead()
+bool Gekko::StressSession::StartRecording(bool save_initial_state, bool disable_compression)
 {
-    return 0.f;
+    return _replay.StartRecording(_config, _sync.GetCurrentFrame(), save_initial_state, disable_compression);
 }
 
-void Gekko::StressSession::NetworkStats(i32 player, GekkoNetworkStats* stats)
+const u8* Gekko::StressSession::StopRecording(u32& length)
 {
-    // no stats for now.
+    return _replay.StopRecording(length);
 }
 
-void Gekko::StressSession::NetworkPoll()
+void Gekko::StressSession::UpdateRecording()
 {
-    // stress sessions are local only
+    if (!_replay.IsRecording()) {
+        return;
+    }
+
+    if (_replay.NeedsState()) {
+        _game_events.AddStateSaveEvent(_sync.GetCurrentFrame() - 1, _replay.PendingState());
+    }
+
+    _replay.RecordInputs(_sync);
 }
 
 void Gekko::StressSession::HandleRollback()

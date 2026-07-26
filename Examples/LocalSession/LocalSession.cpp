@@ -9,6 +9,7 @@
 
 #include <stdlib.h>
 #include <cassert>
+#include <vector>
 
 static void handle_frame_time(
     const uint64_t& frame_start,
@@ -59,6 +60,7 @@ int main(int argc, char* argv[]) {
     }
     printf("Local Couch session with %d player(s)\n", num_players);
     printf("Controls: P0 Up/Down | P1 W/S | P2 J/L | P3 Numpad4/Numpad6 | F1/F2 delay | F3/F4 runahead\n");
+    printf("Replays: F5 start/stop recording | F6 play/stop the recording\n");
 
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Window* window = SDL_CreateWindow("SDL3 GekkoNet Local Session", FIELD_SIZE, FIELD_SIZE, 0);
@@ -99,10 +101,16 @@ int main(int argc, char* argv[]) {
     Gamestate gs = {};
     gs.Init(num_players);
 
+    GekkoSession* replay = nullptr;
+    std::vector<unsigned char> replay_data;
+    bool recording = false;
+    Gamestate::State live_state = {};
+
     bool running = true;
     while (running) {
         frame_start = SDL_GetPerformanceCounter();
-        gekko_network_poll(session);
+
+        gekko_network_poll(replay ? replay : session);
 
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
@@ -143,17 +151,58 @@ int main(int argc, char* argv[]) {
                         printf("runahead: %d\n", current_runahead);
                     }
                     break;
+                case SDLK_F5:
+                    if (replay) {
+                        break;
+                    }
+                    if (!recording) {
+                        recording = gekko_start_recording(session, true, false);
+                        if (recording) {
+                            printf("recording started\n");
+                        }
+                    }
+                    else {
+                        unsigned int length = 0;
+                        const unsigned char* data = gekko_stop_recording(session, &length);
+                        recording = false;
+                        if (data && length > 0) {
+                            replay_data.assign(data, data + length);
+                            printf("recorded %u bytes, press F6 to watch it\n", length);
+                        }
+                    }
+                    break;
+                case SDLK_F6:
+                    if (replay) {
+                        gekko_destroy(&replay);
+                        gs.state = live_state;
+                        printf("replay stopped\n");
+                        break;
+                    }
+                    if (recording || replay_data.empty()) {
+                        break;
+                    }
+                    gekko_create(&replay, GekkoReplaySession);
+                    if (gekko_load_replay(replay, replay_data.data(), (unsigned int)replay_data.size())) {
+                        live_state = gs.state;
+                        printf("playing replay\n");
+                    }
+                    else {
+                        gekko_destroy(&replay);
+                    }
+                    break;
                 }
             }
         }
 
-        for (int i = 0; i < num_players; i++) {
-            Input local_input = poll_player(i);
-            gekko_add_local_input(session, i, &local_input);
+        if (!replay) {
+            for (int i = 0; i < num_players; i++) {
+                Input local_input = poll_player(i);
+                gekko_add_local_input(session, i, &local_input);
+            }
         }
 
         int count = 0;
-        GekkoGameEvent** updates = gekko_update_session(session, &count);
+        GekkoGameEvent** updates = gekko_update_session(replay ? replay : session, &count);
         for (int i = 0; i < count; i++) {
             GekkoGameEvent* event = updates[i];
             switch (event->type) {
@@ -169,7 +218,11 @@ int main(int argc, char* argv[]) {
 
             case GekkoAdvanceEvent:
                 Input inputs[MAX_PLAYERS] = {};
-                for (int j = 0; j < num_players; j++) {
+                int event_players = event->data.adv.input_len / sizeof(Input);
+                if (event_players > MAX_PLAYERS) {
+                    event_players = MAX_PLAYERS;
+                }
+                for (int j = 0; j < event_players; j++) {
                     inputs[j] = ((Input*)(event->data.adv.inputs))[j];
                 }
                 gs.Update(inputs);
@@ -177,16 +230,32 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        if (replay) {
+            int session_count = 0;
+            GekkoSessionEvent** session_events = gekko_session_events(replay, &session_count);
+            for (int i = 0; i < session_count; i++) {
+                if (session_events[i]->type == GekkoReplayFinished) {
+                    gekko_destroy(&replay);
+                    gs.state = live_state;
+                    printf("replay finished\n");
+                    break;
+                }
+            }
+        }
+
         gs.Draw(renderer);
 
+        const char* mode = replay ? " | replay" : (recording ? " | recording" : "");
+
         char title[128];
-        snprintf(title, sizeof(title), "local couch session | players: %d | delay: %d | runahead: %d",
-            num_players, current_delay, current_runahead);
+        snprintf(title, sizeof(title), "local couch session | players: %d | delay: %d | runahead: %d%s",
+            num_players, current_delay, current_runahead, mode);
         SDL_SetWindowTitle(window, title);
 
         handle_frame_time(frame_start, frame_time_ns, frame_delay_ns, performance_frequency);
     }
 
+    gekko_destroy(&replay);
     gekko_destroy(&session);
 
     SDL_DestroyRenderer(renderer);

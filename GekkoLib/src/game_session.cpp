@@ -1,4 +1,4 @@
-#include "session.h"
+#include "session/game_session.h"
 
 #include <cassert>
 #include <cstring>
@@ -160,6 +160,9 @@ GekkoGameEvent** Gekko::GameSession::UpdateSession(i32* count)
         // rewind any runahead frames from the previous tick
         RewindRunahead();
 
+        // store the frames that went by for the replay
+        UpdateRecording();
+
         // check if we need to rollback
         HandleRollback();
 
@@ -238,6 +241,61 @@ void Gekko::GameSession::NetworkStats(i32 player, GekkoNetworkStats* stats)
 void Gekko::GameSession::NetworkPoll()
 {
     Poll();
+}
+
+bool Gekko::GameSession::StartRecording(bool save_initial_state, bool disable_compression)
+{
+    return _replay.StartRecording(_config, _sync.GetCurrentFrame(), save_initial_state, disable_compression);
+}
+
+const u8* Gekko::GameSession::StopRecording(u32& length)
+{
+    return _replay.StopRecording(length);
+}
+
+void Gekko::GameSession::UpdateRecording()
+{
+    if (!_replay.IsRecording()) {
+        return;
+    }
+
+    if (_replay.NeedsState()) {
+        RecordInitialState();
+    }
+
+    _replay.RecordInputs(_sync);
+}
+
+void Gekko::GameSession::RecordInitialState()
+{
+    const Frame current = _sync.GetCurrentFrame();
+    const Frame confirmed = GetConfirmedFrame();
+    const Frame incorrect = _sync.GetMinIncorrectFrame();
+
+    Frame stored = confirmed;
+
+    if (incorrect != GameInput::NULL_FRAME) {
+        stored = std::min(stored, incorrect - 1);
+    }
+
+    if (_config.limited_saving) {
+        stored = std::min(stored, _last_saved_frame);
+    }
+
+    if (stored >= 0) {
+        auto saved = _storage.GetState(stored);
+
+        if (saved->frame == stored && saved->state_len > 0) {
+            _replay.RecordState(saved->state.get(), saved->state_len, stored);
+            return;
+        }
+    }
+
+    if (current - 1 > confirmed || incorrect != GameInput::NULL_FRAME) {
+        return;
+    }
+
+    _game_events.AddStateSaveEvent(current - 1, _replay.PendingState());
 }
 
 void Gekko::GameSession::HandleSavingConfirmedFrame()

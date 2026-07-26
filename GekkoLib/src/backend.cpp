@@ -884,16 +884,17 @@ void Gekko::MessageSystem::OnInputs(NetAddress& addr, NetPacket& pkt)
         return;
     }
 
-    // RLE decompress if the sender compressed this packet
+    const bool is_spectator = (pkt.header.type == SpectatorInputs);
+
+    // reverse RLE + delta if the sender compressed this packet
     if (body->compressed) {
         auto decompressed = Compression::RLEDecode(body->inputs.data(), (u32)body->inputs.size());
-        body->inputs = std::move(decompressed);
+        const u32 stride = is_spectator ? _input_size * _num_players : _input_size;
+        body->inputs = Compression::DeltaDecode(decompressed.data(), (u32)decompressed.size(), stride);
     }
 
     const Frame start_frame = body->start_frame;
     const u32 input_count = body->input_count;
-
-    const bool is_spectator = (pkt.header.type == SpectatorInputs);
 
     if (is_spectator) {
         for (u32 frame_idx = 0; frame_idx < input_count; frame_idx++) {
@@ -1136,7 +1137,7 @@ void Gekko::MessageSystem::SendInputsToPeer(Player* peer, GekkoNetAdapter* host,
         return;
     }
 
-    const u32 MAX_INPUT_SIZE = 512;
+    const u32 MAX_INPUT_SIZE = 1024;
     const auto packet_type = spectator ? SpectatorInputs : Inputs;
     auto& queue = spectator ? _net_spectator_queue : _net_player_queue[locals[0]->handle];
     const u32 num_players = spectator ? _num_players : (u32)locals.size();
@@ -1210,9 +1211,11 @@ void Gekko::MessageSystem::SendInputsToPeer(Player* peer, GekkoNetAdapter* host,
             }
         }
 
-        // RLE compress only when it actually reduces size
+        // delta + RLE, keep only when it actually reduces size
+        const u32 stride = spectator ? _input_size * num_players : _input_size;
         msg.compressed = false;
-        auto compressed = Compression::RLEEncode(msg.inputs.data(), (u32)msg.inputs.size());
+        auto delta = Compression::DeltaEncode(msg.inputs.data(), (u32)msg.inputs.size(), stride);
+        auto compressed = Compression::RLEEncode(delta.data(), (u32)delta.size());
         if (compressed.size() < msg.inputs.size()) {
             msg.inputs = std::move(compressed);
             msg.compressed = true;

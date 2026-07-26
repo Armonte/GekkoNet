@@ -1,6 +1,9 @@
 #include "gekkonet.h"
 
-#include "session.h"
+#include "session/game_session.h"
+#include "session/replay_session.h"
+#include "session/spectator_session.h"
+#include "session/stress_session.h"
 
 GEKKONET_API bool gekko_create(GekkoSession** session, GekkoSessionType session_type)
 {
@@ -19,6 +22,10 @@ GEKKONET_API bool gekko_create(GekkoSession** session, GekkoSessionType session_
 
     case GekkoSessionType::GekkoSpectateSession:
         *session = new Gekko::SpectatorSession();
+        break;
+
+    case GekkoSessionType::GekkoReplaySession:
+        *session = new Gekko::ReplaySession();
         break;
 
     default:
@@ -102,6 +109,29 @@ void gekko_network_stats(GekkoSession* session, int player, GekkoNetworkStats* s
 void gekko_network_poll(GekkoSession* session)
 {
     session->NetworkPoll();
+}
+
+bool gekko_start_recording(GekkoSession* session, bool save_initial_state, bool disable_compression)
+{
+    return session->StartRecording(save_initial_state, disable_compression);
+}
+
+const unsigned char* gekko_stop_recording(GekkoSession* session, unsigned int* length)
+{
+    unsigned int len = 0;
+
+    const unsigned char* data = session->StopRecording(len);
+
+    if (length) {
+        *length = len;
+    }
+
+    return data;
+}
+
+bool gekko_load_replay(GekkoSession* session, const unsigned char* replay_data, unsigned int length)
+{
+    return session->LoadReplay(replay_data, length);
 }
 
 #ifndef GEKKONET_NO_ASIO
