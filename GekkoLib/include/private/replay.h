@@ -23,7 +23,7 @@ namespace Gekko {
     };
 
     struct ReplaySystem {
-        bool StartRecording(GekkoConfig config, Frame frame, bool save_state);
+        bool StartRecording(GekkoConfig config, Frame frame, bool save_state, bool disable_compression);
         const u8* StopRecording(u32& length);
         void RecordInputs(SyncSystem& sync);
         void RecordState(const u8* state, u32 length, Frame frame);
@@ -58,6 +58,7 @@ namespace Gekko {
 
         bool _needs_state = false;
         bool _pending_state = false;
+        bool _no_compression = false;
 
         Frame _start_frame = 0;
         Frame _current_frame = 0;

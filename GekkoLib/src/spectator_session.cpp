@@ -147,9 +147,9 @@ void Gekko::SpectatorSession::NetworkPoll()
     Poll();
 }
 
-bool Gekko::SpectatorSession::StartRecording(bool save_initial_state)
+bool Gekko::SpectatorSession::StartRecording(bool save_initial_state, bool disable_compression)
 {
-    return _replay.StartRecording(_config, _sync.GetCurrentFrame(), save_initial_state);
+    return _replay.StartRecording(_config, _sync.GetCurrentFrame(), save_initial_state, disable_compression);
 }
 
 const u8* Gekko::SpectatorSession::StopRecording(u32& length)

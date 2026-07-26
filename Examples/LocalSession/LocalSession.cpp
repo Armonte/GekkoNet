@@ -156,7 +156,7 @@ int main(int argc, char* argv[]) {
                         break;
                     }
                     if (!recording) {
-                        recording = gekko_start_recording(session, true);
+                        recording = gekko_start_recording(session, true, false);
                         if (recording) {
                             printf("recording started\n");
                         }

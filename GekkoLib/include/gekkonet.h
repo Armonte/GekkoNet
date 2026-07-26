@@ -235,7 +235,8 @@ GEKKONET_API void gekko_network_poll(GekkoSession* session);
 // starts recording the confirmed inputs of a session. replay sessions cannot record.
 // when save_initial_state is set the session stores the gamestate the recording starts at,
 // issuing a save event whenever it doesnt hold one already, so playback can start from there.
-GEKKONET_API bool gekko_start_recording(GekkoSession* session, bool save_initial_state);
+// the recorded inputs are packed unless disable_compression is set.
+GEKKONET_API bool gekko_start_recording(GekkoSession* session, bool save_initial_state, bool disable_compression);
 
 // stops the recording and returns the serialized replay.
 // the returned memory is owned by the session and stays valid

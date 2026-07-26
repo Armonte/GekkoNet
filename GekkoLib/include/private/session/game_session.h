@@ -43,7 +43,7 @@ namespace Gekko {
 
         void NetworkPoll() override;
 
-        bool StartRecording(bool save_initial_state) override;
+        bool StartRecording(bool save_initial_state, bool disable_compression) override;
 
         const u8* StopRecording(u32& length) override;
 

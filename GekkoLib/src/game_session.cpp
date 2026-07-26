@@ -243,9 +243,9 @@ void Gekko::GameSession::NetworkPoll()
     Poll();
 }
 
-bool Gekko::GameSession::StartRecording(bool save_initial_state)
+bool Gekko::GameSession::StartRecording(bool save_initial_state, bool disable_compression)
 {
-    return _replay.StartRecording(_config, _sync.GetCurrentFrame(), save_initial_state);
+    return _replay.StartRecording(_config, _sync.GetCurrentFrame(), save_initial_state, disable_compression);
 }
 
 const u8* Gekko::GameSession::StopRecording(u32& length)

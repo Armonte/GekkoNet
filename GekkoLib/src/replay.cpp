@@ -6,11 +6,13 @@
 #include "compression.h"
 #include "zpp/zpp_bits.h"
 
-bool Gekko::ReplaySystem::StartRecording(GekkoConfig config, Frame frame, bool save_state)
+bool Gekko::ReplaySystem::StartRecording(GekkoConfig config, Frame frame, bool save_state, bool disable_compression)
 {
     Reset();
 
     _replay.config = config;
+
+    _no_compression = disable_compression;
 
     if (InputSize() == 0) {
         Reset();
@@ -42,7 +44,7 @@ const u8* Gekko::ReplaySystem::StopRecording(u32& length)
     const u32 block = InputSize();
 
     std::vector<u8> packed;
-    if (block > 0 && !_replay.inputs.empty()) {
+    if (!_no_compression && block > 0 && !_replay.inputs.empty()) {
         auto delta = Compression::DeltaEncode(_replay.inputs.data(), (u32)_replay.inputs.size(), block);
         packed = Compression::RLEEncode(delta.data(), (u32)delta.size());
     }
@@ -262,6 +264,7 @@ void Gekko::ReplaySystem::Reset()
 
     _needs_state = false;
     _pending_state = false;
+    _no_compression = false;
 
     _bin_buffer.clear();
 

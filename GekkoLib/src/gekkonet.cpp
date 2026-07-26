@@ -111,9 +111,9 @@ void gekko_network_poll(GekkoSession* session)
     session->NetworkPoll();
 }
 
-bool gekko_start_recording(GekkoSession* session, bool save_initial_state)
+bool gekko_start_recording(GekkoSession* session, bool save_initial_state, bool disable_compression)
 {
-    return session->StartRecording(save_initial_state);
+    return session->StartRecording(save_initial_state, disable_compression);
 }
 
 const unsigned char* gekko_stop_recording(GekkoSession* session, unsigned int* length)
