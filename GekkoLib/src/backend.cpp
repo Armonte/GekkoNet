@@ -888,6 +888,10 @@ void Gekko::MessageSystem::OnInputs(NetAddress& addr, NetPacket& pkt)
 
     // reverse RLE + delta if the sender compressed this packet
     if (body->compressed) {
+        if (body->inputs.size() % 2 != 0) {
+            return;
+        }
+
         auto decompressed = Compression::RLEDecode(body->inputs.data(), (u32)body->inputs.size());
         const u32 stride = is_spectator ? _input_size * _num_players : _input_size;
         body->inputs = Compression::DeltaDecode(decompressed.data(), (u32)decompressed.size(), stride);
@@ -897,6 +901,10 @@ void Gekko::MessageSystem::OnInputs(NetAddress& addr, NetPacket& pkt)
     const u32 input_count = body->input_count;
 
     if (is_spectator) {
+        if ((u64)input_count * _num_players * _input_size > body->inputs.size()) {
+            return;
+        }
+
         for (u32 frame_idx = 0; frame_idx < input_count; frame_idx++) {
             const Frame recv_frame = start_frame + frame_idx;
             const u32 frame_offset = frame_idx * _num_players * _input_size;
@@ -909,6 +917,10 @@ void Gekko::MessageSystem::OnInputs(NetAddress& addr, NetPacket& pkt)
     } else {
         auto handles = GetRemoteHandlesForAddress(&addr);
         const u32 player_count = (u32)handles.size();
+
+        if ((u64)input_count * player_count * _input_size > body->inputs.size()) {
+            return;
+        }
 
         for (u32 i = 0; i < player_count; i++) {
             const u32 player_offset = i * input_count * _input_size;

@@ -206,6 +206,12 @@ bool Gekko::ReplaySystem::LoadReplay(const u8* replay_data, u32 length)
     }
 
     if (_replay.compressed) {
+        if (_replay.inputs.size() % 2 != 0) {
+            printf("invalid replay input data\n");
+            Reset();
+            return false;
+        }
+
         auto delta = Compression::RLEDecode(_replay.inputs.data(), (u32)_replay.inputs.size());
         _replay.inputs = Compression::DeltaDecode(delta.data(), (u32)delta.size(), InputSize());
         _replay.compressed = false;

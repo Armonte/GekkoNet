@@ -42,7 +42,7 @@ namespace Gekko {
             u8 count = 0;
             u8 value = 0;
 
-            while (idx < length) {
+            while (idx + 1 < length) {
                 count = data[idx];
                 value = data[idx + 1];
 
