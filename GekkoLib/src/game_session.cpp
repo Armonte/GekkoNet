@@ -190,6 +190,19 @@ f32 Gekko::GameSession::FramesAhead()
     return count > 0 ? sum / (f32)count : 0.f;
 }
 
+// [PovertyCaster #233] This session DOES cross-peer health checking -> true, with real counts.
+bool Gekko::GameSession::HealthStats(GekkoHealthStats* stats)
+{
+    if (!stats) {
+        return false;
+    }
+    stats->compares_matched = _health_matched;
+    stats->compares_mismatched = _health_mismatched;
+    stats->abstained_both = _health_abstain_both;
+    stats->abstained_one_sided = _health_abstain_one;
+    return _config.desync_detection;   // false when the feature is OFF: no comparisons are even attempted
+}
+
 void Gekko::GameSession::NetworkStats(i32 player, GekkoNetworkStats* stats)
 {
     std::vector<std::unique_ptr<Player>>* current = &_msg.remotes;
@@ -303,7 +316,44 @@ void Gekko::GameSession::SessionIntegrityCheck()
 
         for (auto& player : _msg.remotes) {
             if (player->session_health.count(iter->first)) {
-                if (player->session_health[iter->first] != iter->second) {
+                // [PovertyCaster #233] Record BOTH outcomes. Only the mismatch used to be recorded (as
+                // an event), so "compared and agreed" was indistinguishable from "never compared" —
+                // both produced silence. Counting the agreements is what makes a clean run falsifiable.
+                //
+                // *** CORRECTED 2026-08-13, and this correction is the whole point of the counter. ***
+                // The first version of this was a raw `local == remote`, which counts TWO ABSTAINING
+                // PEERS AS A VERIFIED MATCH: an adapter with no opinion about a frame reports
+                // pc::kNoChecksum (0), so 0 == 0 compares equal and incremented `matched`. That made
+                // `chk` structurally incapable of counting the thing it appears to count — the exact
+                // disease as the pre-existing `abst` counter, and worse, because chk is what the
+                // harnesses gate on. pc/Checksum.hpp already models this correctly:
+                //     checksumsComparable(a,b) := a != kNoChecksum && b != kNoChecksum
+                // Caught by melty-session reading the diff, NOT by any of my own tests — a clean 4P
+                // qoh99 run reported chk=16017/0 and looked perfect either way. MBAACC would have shown
+                // it first: it abstains on every non-battle frame, so menus/CSS/loading would have
+                // inflated chk while verifying nothing.
+                //
+                // ONE-SIDED still raises the desync event exactly as before: pc::SessionDriver
+                // classifies it via abstainKind() into _abstainOneSided, and #112 established a
+                // one-sided abstain IS itself a state divergence. Do not "simplify" that away.
+                const u32 _local  = iter->second;
+                const u32 _remote = player->session_health[iter->first];
+                const bool _comparable = (_local != 0u) && (_remote != 0u);   // 0 == pc::kNoChecksum
+                if (!_comparable) {
+                    if (_local == 0u && _remote == 0u) {
+                        _health_abstain_both++;      // nothing to compare; NOT verification
+                    }
+                    else {
+                        _health_abstain_one++;
+                        _msg.session_events.AddDesyncDetectedEvent(   // preserved: drives oneSidedAbstains
+                            iter->first, player->handle, _local, _remote);
+                    }
+                }
+                else if (_local == _remote) {
+                    _health_matched++;               // a REAL verification: both sides had an opinion
+                }
+                else {
+                    _health_mismatched++;
                     _msg.session_events.AddDesyncDetectedEvent(
                         iter->first,
                         player->handle,

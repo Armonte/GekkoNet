@@ -64,6 +64,11 @@ void gekko_set_runahead(GekkoSession* session, unsigned char runahead)
     session->SetRunahead(runahead);
 }
 
+bool gekko_health_stats(GekkoSession* session, GekkoHealthStats* stats)
+{
+    return session->HealthStats(stats);
+}
+
 void gekko_add_local_input(GekkoSession* session, int player, void* input)
 {
     session->AddLocalInput(player, input);

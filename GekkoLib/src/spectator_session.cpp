@@ -117,6 +117,20 @@ f32 Gekko::SpectatorSession::FramesAhead()
     return 0.f;
 }
 
+// [PovertyCaster #233] A spectator consumes a one-way feed and never exchanges health checks with a
+// peer, so it has no opinion. Reporting FALSE (rather than 0 matches) keeps "not applicable" separable
+// from "applicable and nothing was compared".
+bool Gekko::SpectatorSession::HealthStats(GekkoHealthStats* stats)
+{
+    if (stats) {
+        stats->compares_matched = 0;
+        stats->compares_mismatched = 0;
+        stats->abstained_both = 0;
+        stats->abstained_one_sided = 0;
+    }
+    return false;
+}
+
 void Gekko::SpectatorSession::NetworkStats(i32 player, GekkoNetworkStats* stats)
 {
     for (auto& actor : _msg.remotes) {

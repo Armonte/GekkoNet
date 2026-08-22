@@ -177,6 +177,25 @@ typedef struct GekkoNetworkStats {
     float jitter;
 } GekkoNetworkStats;
 
+// [PovertyCaster #233] CROSS-PEER HEALTH-CHECK COVERAGE.
+// The desync signal is an EVENT, raised only when two peers' checksums for a frame DISAGREE. There was
+// no way to ask "how many frames were actually compared and AGREED", so a session that compared
+// thousands of frames and one that compared NOTHING both looked identical from the outside: no desync
+// event either way. That makes every clean verdict unfalsifiable. These counters close that hole.
+//
+// compares_matched counts (frame, remote-peer) PAIRS, not frames: with N peers a single frame can
+// contribute up to N-1 matches. Both counters are monotonic for the life of the session.
+typedef struct GekkoHealthStats {
+    // GATE ON compares_matched. It counts only frames where BOTH peers had a real opinion, so it is
+    // the true verification count. A frame where either side reported 0 (pc::kNoChecksum, "no opinion")
+    // is NOT verification and lands in one of the abstain buckets instead — counting those as matches
+    // was the original bug here and would have made a run that sat in a menu look fully verified.
+    unsigned int compares_matched;      // BOTH sides had an opinion and they AGREED  <- real coverage
+    unsigned int compares_mismatched;   // BOTH had an opinion and they DISAGREED (raised a desync)
+    unsigned int abstained_both;        // neither side had an opinion — nothing to compare
+    unsigned int abstained_one_sided;   // exactly one side did; per #112 that is itself a divergence
+} GekkoHealthStats;
+
 // Public Facing API
 GEKKONET_API bool gekko_create(GekkoSession** session, GekkoSessionType session_type);
 
@@ -197,6 +216,11 @@ GEKKONET_API void gekko_add_local_input(GekkoSession* session, int player, void*
 GEKKONET_API GekkoGameEvent** gekko_update_session(GekkoSession* session, int* count);
 
 GEKKONET_API GekkoSessionEvent** gekko_session_events(GekkoSession* session, int* count);
+
+// [PovertyCaster #233] Cross-peer checksum coverage. Returns FALSE when this session type does no
+// cross-peer health checking at all (spectator / stress), so "unsupported" is distinguishable from
+// "supported and zero" — the whole point of the counter is that a silent zero must not read as proof.
+GEKKONET_API bool gekko_health_stats(GekkoSession* session, GekkoHealthStats* stats);
 
 GEKKONET_API float gekko_frames_ahead(GekkoSession* session);
 

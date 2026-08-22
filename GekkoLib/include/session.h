@@ -23,6 +23,10 @@ struct GekkoSession {
     virtual GekkoSessionEvent** Events(i32* count) = 0;
     virtual f32 FramesAhead() = 0;
     virtual void NetworkStats(i32 player, GekkoNetworkStats* stats) = 0;
+    // [PovertyCaster #233] PURE, deliberately: a defaulted "0 matches" on the base would be a silent
+    // zero that reads exactly like "compared nothing" — the bug this counter exists to expose. Every
+    // session type must state whether it cross-peer health-checks at all.
+    virtual bool HealthStats(GekkoHealthStats* stats) = 0;
     virtual void NetworkPoll() = 0;
     virtual ~GekkoSession() = default;
 };
@@ -52,6 +56,7 @@ namespace Gekko {
         f32 FramesAhead() override;
 
         void NetworkStats(i32 player, GekkoNetworkStats* stats) override;
+        bool HealthStats(GekkoHealthStats* stats) override;   // [PovertyCaster #233]
 
         void NetworkPoll() override;
 
@@ -98,6 +103,11 @@ namespace Gekko {
 		Frame _last_saved_frame;
 
         Frame _last_sent_healthcheck;
+        // [PovertyCaster #233] cross-peer coverage counters — see GekkoHealthStats in gekkonet.h.
+        u32 _health_matched = 0;
+        u32 _health_mismatched = 0;
+        u32 _health_abstain_both = 0;   // [#233] both sides kNoChecksum — nothing to compare
+        u32 _health_abstain_one  = 0;   // [#233] exactly one side had an opinion (itself a divergence, #112)
 
 		Frame _runahead_start_frame;
 
@@ -141,6 +151,7 @@ namespace Gekko {
         f32 FramesAhead() override;
 
         void NetworkStats(i32 player, GekkoNetworkStats* stats) override;
+        bool HealthStats(GekkoHealthStats* stats) override;   // [PovertyCaster #233]
 
         void NetworkPoll() override;
 
@@ -194,6 +205,7 @@ namespace Gekko {
         f32 FramesAhead() override;
 
         void NetworkStats(i32 player, GekkoNetworkStats* stats) override;
+        bool HealthStats(GekkoHealthStats* stats) override;   // [PovertyCaster #233]
 
         void NetworkPoll() override;
 
