@@ -9,6 +9,7 @@ Gekko::GameSession::GameSession()
     _last_saved_frame = GameInput::NULL_FRAME - 1;
     _disconnected_input = nullptr;
     _last_sent_healthcheck = GameInput::NULL_FRAME;
+    _attest_stale_from = GameInput::NULL_FRAME;
     _runahead_start_frame = GameInput::NULL_FRAME;
     _runahead_frames = 0;
     _config = GekkoConfig();
@@ -269,7 +270,25 @@ void Gekko::GameSession::SendSessionHealthCheck()
     }
 
     const Frame current = _sync.GetCurrentFrame();
-    const Frame confirmed = (current - _config.input_prediction_window) - 1;
+    Frame confirmed = (current - _config.input_prediction_window) - 1;
+
+    // [PovertyCaster #231] TWO GUARDS, both measured from a real 4P catch (detection f=994, ring dumps
+    // byte-identical, checksums mismatched -- a FALSE desync that kills the match all the same):
+    //
+    // 1. THE ARITHMETIC WINDOW IS NOT CONFIRMATION. current - window - 1 assumes every remote input that
+    //    old has ARRIVED. Under jitter/loss an input can arrive later than the window; the save for that
+    //    frame was made with a PREDICTED input and its checksum is speculative. Cap attestation at
+    //    GetMinReceivedFrame(): a frame is attestable only when every player's real input for it exists.
+    const Frame min_received = _sync.GetMinReceivedFrame();
+    if (min_received != GameInput::NULL_FRAME && confirmed > min_received) {
+        confirmed = min_received;
+    }
+    // 2. A ROLLBACK QUEUED THIS POLL HAS NOT EXECUTED YET. HandleRollback only queues load/advance/save
+    //    events; the app runs them after this poll returns. Storage for frames >= _attest_stale_from is
+    //    stale RIGHT NOW, so defer -- next poll the corrected save is in place and attestation resumes.
+    if (_attest_stale_from != GameInput::NULL_FRAME && confirmed >= _attest_stale_from) {
+        return;
+    }
 
     if (confirmed <= GameInput::NULL_FRAME) {
         return;
@@ -405,12 +424,18 @@ void Gekko::GameSession::HandleRollback()
         _sync.IncrementFrame();
     }
 
+    _attest_stale_from = GameInput::NULL_FRAME;   // [PovertyCaster #231] reset each poll
     if (!RollbackPending()) {
         return;
     }
 
     current = _sync.GetCurrentFrame();
     const Frame min = _sync.GetMinIncorrectFrame();
+
+    // [PovertyCaster #231] Everything from the rollback's resim start upward is about to be RE-SAVED by
+    // events the app has not executed yet. SendSessionHealthCheck runs later in THIS SAME poll and reads
+    // _storage directly, so without this marker it attests the speculative save of any such frame.
+    _attest_stale_from = min;
 
     const Frame sync_frame = _config.limited_saving ? _last_saved_frame : min - 1;
     const Frame frame_to_save = std::min(current - 1, min);

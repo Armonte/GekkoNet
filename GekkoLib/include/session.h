@@ -103,6 +103,10 @@ namespace Gekko {
 		Frame _last_saved_frame;
 
         Frame _last_sent_healthcheck;
+        // [PovertyCaster #231] Frames at/above this were re-simulated by a rollback QUEUED THIS POLL and
+        // their storage is stale until the app executes the queued save events. Attesting them now would
+        // send a checksum from the speculative save. Reset each poll.
+        Frame _attest_stale_from;
         // [PovertyCaster #233] cross-peer coverage counters — see GekkoHealthStats in gekkonet.h.
         u32 _health_matched = 0;
         u32 _health_mismatched = 0;
