@@ -39,6 +39,12 @@ bool gekko_destroy(GekkoSession** session)
     return false;
 }
 
+int gekko_attest_log(GekkoSession* session, unsigned int* out, int max)
+{
+    if (!session || !out || max <= 0) return 0;
+    return (int)session->AttestLog(out, max);
+}
+
 void gekko_start(GekkoSession* session, GekkoConfig* config)
 {
     session->Init(config);

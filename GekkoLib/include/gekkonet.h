@@ -200,6 +200,9 @@ typedef struct GekkoHealthStats {
 GEKKONET_API bool gekko_create(GekkoSession** session, GekkoSessionType session_type);
 
 GEKKONET_API bool gekko_destroy(GekkoSession** session);
+/* [PovertyCaster #231] copy up to max u32s of recent health-attest records (5 u32s per record:
+   frame, checksum, min_received, min_incorrect, stale_from); returns the record count. */
+GEKKONET_API int gekko_attest_log(GekkoSession* session, unsigned int* out, int max);
 
 GEKKONET_API void gekko_start(GekkoSession* session, GekkoConfig* config);
 

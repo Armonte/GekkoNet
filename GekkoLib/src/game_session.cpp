@@ -307,6 +307,13 @@ void Gekko::GameSession::SendSessionHealthCheck()
     _msg.local_health[confirmed] = sav->checksum;
 
     _msg.SendSessionHealth(confirmed, sav->checksum);
+    {   // [PovertyCaster #231] record the attestation with the sync state that allowed it
+        AttestRec& r = _attest_ring[_attest_count % kAttestRing];
+        r.frame = confirmed; r.checksum = sav->checksum;
+        r.min_received = min_received; r.min_incorrect = _sync.GetMinIncorrectFrame();
+        r.stale_from = _attest_stale_from;
+        ++_attest_count;
+    }
 
     for (auto iter = _msg.local_health.begin();
         iter != _msg.local_health.end(); ) {

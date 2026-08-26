@@ -27,6 +27,9 @@ struct GekkoSession {
     // zero that reads exactly like "compared nothing" — the bug this counter exists to expose. Every
     // session type must state whether it cross-peer health-checks at all.
     virtual bool HealthStats(GekkoHealthStats* stats) = 0;
+    // [PovertyCaster #231] copy up to `max` recent health attestations into out (5 u32s each:
+    // frame, checksum, min_received, min_incorrect, stale_from). Default: none (spectators etc).
+    virtual i32 AttestLog(u32* out, i32 max) { (void)out; (void)max; return 0; }
     virtual void NetworkPoll() = 0;
     virtual ~GekkoSession() = default;
 };
@@ -107,6 +110,28 @@ namespace Gekko {
         // their storage is stale until the app executes the queued save events. Attesting them now would
         // send a checksum from the speculative save. Reset each poll.
         Frame _attest_stale_from;
+        // [PovertyCaster #231] The last 8 attestations, with the sync state AT ATTEST TIME. A real 4P catch
+        // showed one peer attesting a checksum matching NEITHER its first nor its last save of the frame --
+        // a mid-rollback-chain value -- and no post-hoc instrument can reconstruct the ordering that allowed
+        // it. This ring records it as it happens; the app prints it beside the desync report.
+    public:
+        struct AttestRec { Frame frame; u32 checksum; Frame min_received; Frame min_incorrect; Frame stale_from; };
+        static constexpr int kAttestRing = 8;
+        i32 AttestLog(u32* out, i32 max) override {
+            i32 n = _attest_count < kAttestRing ? _attest_count : kAttestRing;
+            if (n > max / 5) n = max / 5;
+            // oldest-first so the printout reads chronologically
+            for (i32 k = 0; k < n; ++k) {
+                const AttestRec& r = _attest_ring[(_attest_count - n + k) % kAttestRing];
+                out[k*5+0] = (u32)r.frame; out[k*5+1] = r.checksum;
+                out[k*5+2] = (u32)r.min_received; out[k*5+3] = (u32)r.min_incorrect;
+                out[k*5+4] = (u32)r.stale_from;
+            }
+            return n;
+        }
+    private:
+        AttestRec _attest_ring[kAttestRing] = {};
+        int _attest_count = 0;
         // [PovertyCaster #233] cross-peer coverage counters — see GekkoHealthStats in gekkonet.h.
         u32 _health_matched = 0;
         u32 _health_mismatched = 0;
