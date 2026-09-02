@@ -101,6 +101,20 @@ GekkoGameEvent** Gekko::StressSession::UpdateSession(i32* count)
     return _game_events.Data();
 }
 
+// [PovertyCaster #233] The stress/synctest session DOES compare checksums, but INTRA-peer (save ->
+// load -> re-sim -> compare against its own recorded history), never cross-peer. Reporting its counts
+// here would silently answer a different question than the caller asked, so it declines instead.
+bool Gekko::StressSession::HealthStats(GekkoHealthStats* stats)
+{
+    if (stats) {
+        stats->compares_matched = 0;
+        stats->compares_mismatched = 0;
+        stats->abstained_both = 0;
+        stats->abstained_one_sided = 0;
+    }
+    return false;
+}
+
 GekkoSessionEvent** Gekko::StressSession::Events(i32* count)
 {
     *count = (i32)_session_events.GetRecentEvents().size();

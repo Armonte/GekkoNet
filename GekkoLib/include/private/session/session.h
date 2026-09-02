@@ -17,6 +17,14 @@ struct GekkoSession {
     virtual GekkoSessionEvent** Events(i32* count) = 0;
     virtual f32 FramesAhead() { return 0.f; }
     virtual void NetworkStats(i32 player, GekkoNetworkStats* stats) {}
+    // [PovertyCaster #233] PURE, deliberately — and it stays pure across the 2026-09 upstream sync even
+    // though upstream defaulted every other virtual on this ABC: a defaulted "0 matches" on the base would
+    // be a silent zero that reads exactly like "compared nothing" — the bug this counter exists to expose.
+    // Every session type must state whether it cross-peer health-checks at all (ReplaySession: no).
+    virtual bool HealthStats(GekkoHealthStats* stats) = 0;
+    // [PovertyCaster #231] copy up to `max` recent health attestations into out (5 u32s each:
+    // frame, checksum, min_received, min_incorrect, stale_from). Default: none (spectators etc).
+    virtual i32 AttestLog(u32* out, i32 max) { (void)out; (void)max; return 0; }
     virtual void NetworkPoll() {}
     virtual bool StartRecording(bool save_initial_state, bool disable_compression) { return false; }
     virtual const u8* StopRecording(u32& length) { return nullptr; }

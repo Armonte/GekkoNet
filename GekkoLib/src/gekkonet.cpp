@@ -46,6 +46,12 @@ bool gekko_destroy(GekkoSession** session)
     return false;
 }
 
+int gekko_attest_log(GekkoSession* session, unsigned int* out, int max)
+{
+    if (!session || !out || max <= 0) return 0;
+    return (int)session->AttestLog(out, max);
+}
+
 void gekko_start(GekkoSession* session, GekkoConfig* config)
 {
     session->Init(config);
@@ -79,6 +85,11 @@ void gekko_set_local_delay(GekkoSession* session, int player, unsigned char dela
 void gekko_set_runahead(GekkoSession* session, unsigned char runahead)
 {
     session->SetRunahead(runahead);
+}
+
+bool gekko_health_stats(GekkoSession* session, GekkoHealthStats* stats)
+{
+    return session->HealthStats(stats);
 }
 
 void gekko_add_local_input(GekkoSession* session, int player, void* input)

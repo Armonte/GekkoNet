@@ -46,6 +46,23 @@ GekkoGameEvent** Gekko::ReplaySession::UpdateSession(i32* count)
     return _game_events.Data();
 }
 
+// [PovertyCaster #233 / 2026-09 sync] A replay session feeds recorded inputs to ONE process; there is
+// no peer, so there is no cross-peer comparison to count. FALSE is the correct VALUE — but this body
+// exists because HealthStats is PURE on the ABC and this class arrived upstream after the fork made it
+// so: the compile error that demanded it is the mechanism working. Zeroing the struct keeps a caller
+// that reads the fields without checking the return from seeing stack garbage as coverage. The caller
+// (pc::SessionDriver) says out loud when a session reports no health checking, so no log here.
+bool Gekko::ReplaySession::HealthStats(GekkoHealthStats* stats)
+{
+    if (stats) {
+        stats->compares_matched = 0;
+        stats->compares_mismatched = 0;
+        stats->abstained_both = 0;
+        stats->abstained_one_sided = 0;
+    }
+    return false;
+}
+
 GekkoSessionEvent** Gekko::ReplaySession::Events(i32* count)
 {
     *count = (i32)_session_events.GetRecentEvents().size();

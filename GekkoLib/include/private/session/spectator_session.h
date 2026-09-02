@@ -29,6 +29,7 @@ namespace Gekko {
         GekkoGameEvent** UpdateSession(i32* count) override;
 
         GekkoSessionEvent** Events(i32* count) override;
+        bool HealthStats(GekkoHealthStats* stats) override;   // [PovertyCaster #233]
 
         void NetworkStats(i32 player, GekkoNetworkStats* stats) override;
 

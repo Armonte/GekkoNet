@@ -179,6 +179,25 @@ typedef struct GekkoNetworkStats {
     float jitter;
 } GekkoNetworkStats;
 
+// [PovertyCaster #233] CROSS-PEER HEALTH-CHECK COVERAGE.
+// The desync signal is an EVENT, raised only when two peers' checksums for a frame DISAGREE. There was
+// no way to ask "how many frames were actually compared and AGREED", so a session that compared
+// thousands of frames and one that compared NOTHING both looked identical from the outside: no desync
+// event either way. That makes every clean verdict unfalsifiable. These counters close that hole.
+//
+// compares_matched counts (frame, remote-peer) PAIRS, not frames: with N peers a single frame can
+// contribute up to N-1 matches. Both counters are monotonic for the life of the session.
+typedef struct GekkoHealthStats {
+    // GATE ON compares_matched. It counts only frames where BOTH peers had a real opinion, so it is
+    // the true verification count. A frame where either side reported 0 (pc::kNoChecksum, "no opinion")
+    // is NOT verification and lands in one of the abstain buckets instead — counting those as matches
+    // was the original bug here and would have made a run that sat in a menu look fully verified.
+    unsigned int compares_matched;      // BOTH sides had an opinion and they AGREED  <- real coverage
+    unsigned int compares_mismatched;   // BOTH had an opinion and they DISAGREED (raised a desync)
+    unsigned int abstained_both;        // neither side had an opinion — nothing to compare
+    unsigned int abstained_one_sided;   // exactly one side did; per #112 that is itself a divergence
+} GekkoHealthStats;
+
 // Public Facing API
 
 // creates a session of the given type. the handle has to be empty.
@@ -186,6 +205,9 @@ GEKKONET_API bool gekko_create(GekkoSession** session, GekkoSessionType session_
 
 // destroys the session and clears the handle.
 GEKKONET_API bool gekko_destroy(GekkoSession** session);
+/* [PovertyCaster #231] copy up to max u32s of recent health-attest records (5 u32s per record:
+   frame, checksum, min_received, min_incorrect, stale_from); returns the record count. */
+GEKKONET_API int gekko_attest_log(GekkoSession* session, unsigned int* out, int max);
 
 // applies the config to the session, call this before adding any actors.
 GEKKONET_API void gekko_start(GekkoSession* session, GekkoConfig* config);
@@ -223,6 +245,11 @@ GEKKONET_API GekkoGameEvent** gekko_update_session(GekkoSession* session, int* c
 
 // returns the events the last update raised, like actors connecting or a replay finishing.
 GEKKONET_API GekkoSessionEvent** gekko_session_events(GekkoSession* session, int* count);
+
+// [PovertyCaster #233] Cross-peer checksum coverage. Returns FALSE when this session type does no
+// cross-peer health checking at all (spectator / stress / replay), so "unsupported" is distinguishable
+// from "supported and zero" — the whole point of the counter is that a silent zero must not read as proof.
+GEKKONET_API bool gekko_health_stats(GekkoSession* session, GekkoHealthStats* stats);
 
 // the average amount of frames this session runs ahead of its remote players.
 GEKKONET_API float gekko_frames_ahead(GekkoSession* session);
