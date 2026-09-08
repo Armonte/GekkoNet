@@ -32,6 +32,15 @@ namespace Gekko {
         void SetDisconnectTimeout(u32 timeout) override;
 
         void AddLocalInput(i32 player, void* input) override;
+        unsigned DiscardedUnacked() override { return _msg.DiscardedUnacked(); }
+        int StallInfo(int* out, int max) override {
+            if (!out || max < 1) return 0;
+            int n = 0;
+            out[n++] = (int)_sync.StallCurrentFrame();
+            const u8 np = _sync.StallNumPlayers();
+            for (u8 i = 0; i < np && n < max; i++) out[n++] = (int)_sync.StallLastReceived(i);
+            return n;
+        }
 
         GekkoGameEvent** UpdateSession(i32* count) override;
 

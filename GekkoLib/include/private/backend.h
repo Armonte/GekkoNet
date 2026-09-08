@@ -146,6 +146,13 @@ namespace Gekko {
 
 		void HandleData(GekkoNetAdapter* host, GekkoNetResult** data, u32 length);
 
+		// [PovertyCaster #83] Total inputs discarded by the queue cap that a connected peer had not acked,
+
+		// summed over every local player's send queue. Nonzero == a peer is permanently unserviceable.
+
+		u32 DiscardedUnacked();
+
+
 		void SendInputAck(Handle player, Frame frame, i8 local_advantage);
 
 		Frame GetLastAddedInput(bool spectator = false);
@@ -186,6 +193,11 @@ namespace Gekko {
         std::map<Frame, u32> local_health;
 
         struct NetInputQueue {
+            // [PovertyCaster #83] inputs discarded by the MAX_INPUT_QUEUE_SIZE cap that a connected peer
+            // had NOT yet acknowledged. Nonzero means a peer can no longer be served the frames it needs
+            // and the session is deadlocked by construction. See TrimToAck.
+            u32 discarded_unacked = 0;
+
             Frame last_added_input = -1;
             std::deque<std::unique_ptr<u8[]>> inputs;
 

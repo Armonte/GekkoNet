@@ -13,6 +13,13 @@ struct GekkoSession {
     virtual bool DisconnectActor(i32 actor) { return false; }
     virtual void SetDisconnectTimeout(u32 timeout) {}
     virtual void AddLocalInput(i32 player, void* input) {}
+    // [PovertyCaster #83] Inputs discarded from the send queue that a connected peer had not acked.
+    // Default 0 for session kinds with no remote send queue (stress); GameSession overrides.
+    virtual unsigned DiscardedUnacked() { return 0; }
+    // [PovertyCaster #83] Fill `out` with the advance gate's own state: [0]=current frame, then one
+    // last-received frame per player. Returns the count written. THE question at a stall is which player's
+    // buffer is short, and nothing exposed it.
+    virtual int StallInfo(int* /*out*/, int /*max*/) { return 0; }
     virtual GekkoGameEvent** UpdateSession(i32* count) = 0;
     virtual GekkoSessionEvent** Events(i32* count) = 0;
     virtual f32 FramesAhead() { return 0.f; }

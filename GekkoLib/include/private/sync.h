@@ -44,6 +44,14 @@ namespace Gekko {
 		Frame GetMinReceivedFrame();
 
         Frame GetLastReceivedFrom(Handle player);
+        // [PovertyCaster #83] THE ADVANCE GATE'S OWN STATE. GetCurrentInputs() returns false -- and the
+        // session cannot advance -- when ANY player's buffer has no input at _current_frame. Everything
+        // else is downstream of that one fact, and three hypotheses were argued without ever reading it.
+        Frame StallCurrentFrame() const { return _current_frame; }
+        Frame StallLastReceived(u8 player) const {
+            return player < _num_players ? _input_buffers[player].LastReceived() : (Frame)-1;
+        }
+        u8    StallNumPlayers() const { return _num_players; }
 
         void SetLastReceivedFrame(Frame frame);
 
