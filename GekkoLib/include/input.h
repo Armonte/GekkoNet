@@ -38,6 +38,11 @@ namespace Gekko {
 
 		void AddInput(Frame frame, u8* input);
 
+		// [PovertyCaster #83] the highest frame this buffer actually holds. See SyncSystem::StallLastReceived.
+
+		Frame LastReceived() const { return _last_received_input; }
+
+
 		void SetDelay(u8 delay);
 
 		u8 GetDelay();

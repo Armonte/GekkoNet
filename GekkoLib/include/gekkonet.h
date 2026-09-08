@@ -229,6 +229,20 @@ GEKKONET_API float gekko_frames_ahead(GekkoSession* session);
 
 GEKKONET_API void gekko_network_stats(GekkoSession* session, int player, GekkoNetworkStats* stats);
 
+// [PovertyCaster #83] Inputs this session DISCARDED from its send queue that a connected peer had not yet
+// acknowledged. The queue is capped at MAX_INPUT_QUEUE_SIZE (128 ~= 2.1s at 60Hz) and the cap OVERRIDES the
+// ack-derived retention target, so a peer held up for longer than that loses the frames it still needs --
+// permanently, because the receiver only accepts sequential inserts. Nonzero here means the session cannot
+// recover on its own. Monotonic for the life of the session.
+GEKKONET_API unsigned gekko_discarded_unacked(GekkoSession* session);
+
+// [PovertyCaster #83] THE ADVANCE GATE'S OWN STATE, for a session that has stopped advancing.
+// GetCurrentInputs() returns false -- and no AdvanceEvent is produced -- when ANY player's input buffer
+// has nothing at the session's current frame. `out[0]` is that current frame; out[1..N] are each player's
+// last-received frame. A player whose value is BELOW out[0] is the one the session is waiting for, which
+// immediately separates "we are not sending" from "we are not receiving". Returns the count written.
+GEKKONET_API int gekko_stall_info(GekkoSession* session, int* out, int max);
+
 GEKKONET_API void gekko_network_poll(GekkoSession* session);
 
 #ifndef GEKKONET_NO_ASIO

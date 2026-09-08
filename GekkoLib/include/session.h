@@ -19,6 +19,13 @@ struct GekkoSession {
     virtual void SetNetAdapter(GekkoNetAdapter* adapter) = 0;
     virtual i32 AddActor(GekkoPlayerType type, GekkoNetAddress* addr) = 0;
     virtual void AddLocalInput(i32 player, void* input) = 0;
+    // [PovertyCaster #83] Inputs discarded from the send queue that a connected peer had not acked.
+    // Default 0 for session kinds with no remote send queue (stress); GameSession overrides.
+    virtual unsigned DiscardedUnacked() { return 0; }
+    // [PovertyCaster #83] Fill `out` with the advance gate's own state: [0]=current frame, then one
+    // last-received frame per player. Returns the count written. THE question at a stall is which player's
+    // buffer is short, and nothing exposed it.
+    virtual int StallInfo(int* /*out*/, int /*max*/) { return 0; }
     virtual GekkoGameEvent** UpdateSession(i32* count) = 0;
     virtual GekkoSessionEvent** Events(i32* count) = 0;
     virtual f32 FramesAhead() = 0;
@@ -51,6 +58,15 @@ namespace Gekko {
         i32 AddActor(GekkoPlayerType type, GekkoNetAddress* addr) override;
 
         void AddLocalInput(i32 player, void* input) override;
+        unsigned DiscardedUnacked() override { return _msg.DiscardedUnacked(); }
+        int StallInfo(int* out, int max) override {
+            if (!out || max < 1) return 0;
+            int n = 0;
+            out[n++] = (int)_sync.StallCurrentFrame();
+            const u8 np = _sync.StallNumPlayers();
+            for (u8 i = 0; i < np && n < max; i++) out[n++] = (int)_sync.StallLastReceived(i);
+            return n;
+        }
 
         GekkoGameEvent** UpdateSession(i32* count) override;
 

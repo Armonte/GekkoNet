@@ -58,7 +58,22 @@ void Gekko::MessageSystem::NetInputQueue::TrimToAck(Frame min_ack, u32 max_size)
     }
 
     // apply safety cap
+    // [PovertyCaster #83] THE CAP CAN DISCARD INPUTS A CONNECTED PEER HAS NOT ACKED, AND THAT IS
+    // UNRECOVERABLE. `target` above is the ack-derived size — how much this queue must keep so every peer
+    // can still be served. min() then overrides it with a fixed 128-entry ceiling (~2.1 s at 60 Hz), so a
+    // peer that has not acked for longer than that has the frames it still needs popped off the front and
+    // destroyed. SendInputsToPeer then starts from queue_oldest_frame instead, and the receiver's
+    // InputBuffer::AddInput drops everything non-sequential ("only allow sequential input insertion"), so
+    // every packet after that point is discarded and the session deadlocks permanently.
+    //
+    // Measured in PovertyCaster as a lockstep freeze at a round-attach barrier: our own barrier holds run
+    // 672 ms / 8984 ms / 9344 ms, and 9.3 s is ~560 frames — more than four times this ceiling.
+    //
+    // COUNTED, NOT YET CHANGED. Fixing the policy means deciding what a genuinely runaway peer costs in
+    // memory, which is a different question from whether this fires. Count it first.
+    const u32 ack_target = target;
     target = std::min(target, max_size);
+    if (target < ack_target) discarded_unacked += (ack_target - target);
 
     while (inputs.size() > target) {
         inputs.pop_front();
@@ -198,6 +213,14 @@ void Gekko::MessageSystem::SendSyncResponse(NetAddress* addr, u16 magic)
     body->rng_data = _session_magic;
 
     message->pkt.body = std::move(body);
+}
+
+u32 Gekko::MessageSystem::DiscardedUnacked()
+{
+    u32 n = 0;
+    for (auto& q : _net_player_queue) n += q.discarded_unacked;
+    n += _net_spectator_queue.discarded_unacked;
+    return n;
 }
 
 void Gekko::MessageSystem::SendInputAck(Handle player, Frame frame, i8 local_advantage)

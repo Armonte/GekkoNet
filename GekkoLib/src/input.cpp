@@ -50,7 +50,40 @@ void Gekko::InputBuffer::AddLocalInput(Frame frame, u8* input)
 			AddInput(i,  _empty_input.get());
 		}
 	}
-	AddInput(frame + _input_delay, input);
+
+    // [PovertyCaster #83] BRIDGE A GAP RATHER THAN WEDGING ON IT.
+    //
+    // This function can only ever write at `frame + _input_delay`, and AddInput accepts ONLY
+    // `_last_received_input + 1` (it silently returns otherwise). So if this buffer ever falls behind the
+    // session's current frame -- even by ONE -- the target is permanently unreachable and EVERY subsequent
+    // local input is discarded. The session then cannot advance, `frame` cannot move, and the target cannot
+    // come down. It is a closed loop with no exit.
+    //
+    // MEASURED (PovertyCaster handoff §6cb) at a lockstep freeze that reproduced at 60ms and 150ms alike,
+    // on both peers simultaneously and with identical state:
+    //
+    //     advance gate: cur=760  p0=759*  p1=772
+    //
+    // p1 sits exactly at cur + delay (12), as it should. p0 -- the LOCAL buffer of the peer that started
+    // the deadlock -- is one frame SHORT of cur, so every AddLocalInput was computing 772 against a
+    // required 760 and being dropped. Not a network fault: the peer stopped feeding ITSELF.
+    //
+    // SetDelay's delay-INCREASE path already performs exactly this repair ("expand the delay with the last
+    // input we received"), which is why a rising delay could paper over the gap and a steady one could not.
+    // Doing it here makes the recovery unconditional instead of a side effect of an unrelated event.
+    //
+    // Repeating the last input is the correct filler for the same reason it is correct there: these are
+    // frames the local player has already lived through with no new information, and a held button is a
+    // far better reconstruction than a dropped frame -- which is not a reconstruction at all, it is a hang.
+    const Frame target = frame + _input_delay;
+    if (_last_received_input != GameInput::NULL_FRAME && target > _last_received_input + 1) {
+        u8* prev = _inputs[_last_received_input % _buff_size]->input.get();
+        for (Frame f = _last_received_input + 1; f < target; f++) {
+            AddInput(f, prev);
+        }
+    }
+
+	AddInput(target, input);
 }
 
 void Gekko::InputBuffer::AddInput(Frame frame, u8* input)
