@@ -86,6 +86,18 @@ void gekko_set_input_prediction_window(GekkoSession* session, unsigned char wind
     session->SetInputPredictionWindow(window);
 }
 
+int gekko_stall_info(GekkoSession* session, int* out, int max)
+{
+    // [PovertyCaster #83] see session.h StallInfo.
+    return session ? session->StallInfo(out, max) : 0;
+}
+
+unsigned gekko_discarded_unacked(GekkoSession* session)
+{
+    // [PovertyCaster #83] see backend.cpp TrimToAck.
+    return session ? session->DiscardedUnacked() : 0u;
+}
+
 void gekko_add_local_input(GekkoSession* session, int player, void* input)
 {
     session->AddLocalInput(player, input);
