@@ -133,6 +133,22 @@ void Gekko::SessionEventSystem::AddPlayerDisconnectedEvent(Handle handle)
     AddEvent(ev);
 }
 
+void Gekko::SessionEventSystem::AddPlayerInterruptedEvent(Handle handle)
+{
+    auto ev = _event_buffer.GetEvent();
+    ev->type = GekkoPlayerInterrupted;
+    ev->data.interrupted.handle = handle;
+    AddEvent(ev);
+}
+
+void Gekko::SessionEventSystem::AddPlayerResumedEvent(Handle handle)
+{
+    auto ev = _event_buffer.GetEvent();
+    ev->type = GekkoPlayerResumed;
+    ev->data.resumed.handle = handle;
+    AddEvent(ev);
+}
+
 void Gekko::SessionEventSystem::AddSessionStartedEvent()
 {
     auto ev = _event_buffer.GetEvent();
@@ -213,13 +229,13 @@ void Gekko::GameEventSystem::AddSaveEvent(SyncSystem& sync, StateStorage& storag
     }
 }
 
-void Gekko::GameEventSystem::AddLoadEvent(SyncSystem& sync, StateStorage& storage)
+void Gekko::GameEventSystem::AddLoadEvent(SyncSystem& sync, StateStorage& storage, bool forced)
 {
     const Frame frame_to_load = sync.GetCurrentFrame();
 
     auto state = storage.GetState(frame_to_load);
 
-    AddStateLoadEvent(frame_to_load, state->state.get(), state->state_len);
+    AddStateLoadEvent(frame_to_load, state->state.get(), state->state_len, forced);
 }
 
 void Gekko::GameEventSystem::AddStateSaveEvent(Frame frame, StateEntry* state, bool portable)
@@ -238,7 +254,7 @@ void Gekko::GameEventSystem::AddStateSaveEvent(Frame frame, StateEntry* state, b
     event->data.save.state_len = &state->state_len;
 }
 
-void Gekko::GameEventSystem::AddStateLoadEvent(Frame frame, u8* state, u32 state_len)
+void Gekko::GameEventSystem::AddStateLoadEvent(Frame frame, u8* state, u32 state_len, bool forced)
 {
     _current_events.push_back(_event_buffer.GetEvent(false));
 
@@ -246,6 +262,7 @@ void Gekko::GameEventSystem::AddStateLoadEvent(Frame frame, u8* state, u32 state
     event->type = GekkoLoadEvent;
 
     event->data.load.frame = frame;
+    event->data.load.forced = forced;
     event->data.load.state = state;
     event->data.load.state_len = state_len;
 }

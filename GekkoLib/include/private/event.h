@@ -39,11 +39,11 @@ namespace Gekko {
 
         void AddSaveEvent(SyncSystem& sync, StateStorage& storage, Frame* last_saved_frame = nullptr);
 
-        void AddLoadEvent(SyncSystem& sync, StateStorage& storage);
+        void AddLoadEvent(SyncSystem& sync, StateStorage& storage, bool forced = false);
 
         void AddStateSaveEvent(Frame frame, StateEntry* state, bool portable = false);
 
-        void AddStateLoadEvent(Frame frame, u8* state, u32 state_len);
+        void AddStateLoadEvent(Frame frame, u8* state, u32 state_len, bool forced = false);
 
         void AddRunaheadSaveEvent(SyncSystem& sync, StateStorage& storage);
 
@@ -90,6 +90,11 @@ namespace Gekko {
         void AddPlayerConnectedEvent(Handle handle);
 
         void AddPlayerDisconnectedEvent(Handle handle);
+
+        // Hinokakera resilience patch: interrupted / resumed liveness events.
+        void AddPlayerInterruptedEvent(Handle handle);
+
+        void AddPlayerResumedEvent(Handle handle);
 
         void AddSessionStartedEvent();
 

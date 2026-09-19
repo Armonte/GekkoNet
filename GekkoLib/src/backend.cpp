@@ -14,6 +14,8 @@ Gekko::MessageSystem::MessageSystem()
     _accept_spectator_state = false;
     _last_sent_network_check = 0;
     _disconnect_timeout = NetStats::DISCONNECT_TIMEOUT;
+    _interrupt_timeout = NetStats::INTERRUPT_TIMEOUT;
+    _input_retry_interval = NetStats::INPUT_RETRY_INTERVAL;
 
 	// gen magic for session
 	std::srand((unsigned int)std::time(nullptr));
@@ -26,12 +28,20 @@ void Gekko::MessageSystem::Init(
     u8 num_players,
     u32 input_size,
     u32 state_size,
-    bool accept_spectator_state)
+    bool accept_spectator_state,
+    u64 disconnect_timeout_ms,
+    u64 interrupt_timeout_ms,
+    u64 input_retry_ms)
 {
     _num_players = num_players;
 	_input_size = input_size;
     _state_size = state_size;
     _accept_spectator_state = accept_spectator_state;
+
+    // Hinokakera resilience patch: configurable liveness timeouts and resend interval (0 = defaults).
+    _disconnect_timeout = disconnect_timeout_ms != 0 ? disconnect_timeout_ms : NetStats::DISCONNECT_TIMEOUT;
+    _interrupt_timeout = interrupt_timeout_ms != 0 ? interrupt_timeout_ms : NetStats::INTERRUPT_TIMEOUT;
+    _input_retry_interval = input_retry_ms != 0 ? input_retry_ms : NetStats::INPUT_RETRY_INTERVAL;
 
     _net_player_queue.resize(num_players);
 
@@ -659,6 +669,8 @@ void Gekko::MessageSystem::MarkActorDisconnected(Player* actor)
     session_events.AddPlayerDisconnectedEvent(actor->handle);
     actor->SetStatus(Disconnected);
     actor->sync_num = 0;
+    // Hinokakera resilience patch: a disconnected actor is no longer interrupted.
+    actor->interrupted = false;
 
     // spectators dont own an input queue so theres no frame to agree on.
     if (actor->handle < _num_players) {
@@ -677,7 +689,10 @@ void Gekko::MessageSystem::SendPendingClaims()
         }
 
         // stop claiming once the exchange had plenty of time to settle.
-        if (now - actor->last_claim_raise_time > NetStats::DISCONNECT_TIMEOUT) {
+        // Hinokakera resilience patch: the configured disconnect timeout instead of the
+        // hardcoded default (a timeout of 0, automatic disconnecting off, keeps the default).
+        const u64 claim_window = _disconnect_timeout != 0 ? _disconnect_timeout : NetStats::DISCONNECT_TIMEOUT;
+        if (now - actor->last_claim_raise_time > claim_window) {
             continue;
         }
 
@@ -752,11 +767,12 @@ void Gekko::MessageSystem::HandleUnrecoverableGap()
 
 void Gekko::MessageSystem::HandleTooFarBehindActors(bool spectator)
 {
-    // a timeout of 0 means the user handles disconnecting themselves.
-    if (_disconnect_timeout == 0) {
-        return;
-    }
-
+    // Hinokakera resilience patch (as2 M3 model): three-state liveness.
+    //   silence >= _interrupt_timeout  -> interrupted: the actor stays Connected, resends
+    //       keep flowing, PlayerInterrupted is raised once (ParsePacket resumes it).
+    //   silence >= _disconnect_timeout -> Disconnected, the existing path.
+    // a disconnect timeout of 0 means the user handles disconnecting themselves;
+    // interruptions are still reported then.
     const u64 now = TimeSinceEpoch();
 	for (auto& actor : spectator ? spectators : remotes) {
 		if (actor->GetStatus() == Connected) {
@@ -767,11 +783,15 @@ void Gekko::MessageSystem::HandleTooFarBehindActors(bool spectator)
             }
             // check whether messages are being sent if not disconnect.
             const u64 msg_diff = now - actor->stats.last_received_message;
-			if (msg_diff > _disconnect_timeout) {
+			if (_disconnect_timeout != 0 && msg_diff >= _disconnect_timeout) {
                 MarkActorDisconnected(actor.get());
                 // let the actor know it has been dropped in case its still able to receive.
                 actor->disconnect_msgs_left = NUM_DISCONNECT_MSGS;
 			}
+            else if (_interrupt_timeout != 0 && msg_diff >= _interrupt_timeout && !actor->interrupted) {
+                actor->interrupted = true;
+                session_events.AddPlayerInterruptedEvent(actor->handle);
+            }
 		}
 	}
 }
@@ -868,6 +888,11 @@ void Gekko::MessageSystem::ParsePacket(NetAddress& addr, NetPacket& pkt, u32 pac
 
         for (auto& player : *current) {
             if (player->address.Equals(addr)) {
+                // Hinokakera resilience patch: the first packet from an interrupted actor resumes it.
+                if (player->interrupted) {
+                    player->interrupted = false;
+                    session_events.AddPlayerResumedEvent(player->handle);
+                }
                 player->stats.last_received_message = now;
                 player->stats.bytes_received_accum += packet_size;
             }
@@ -1404,7 +1429,7 @@ void Gekko::MessageSystem::SendPendingSpectatorStates(GekkoNetAdapter* host)
             continue;
         }
 
-        if (player->last_spectator_state_send_time + NetStats::INPUT_RETRY_INTERVAL > now) {
+        if (player->last_spectator_state_send_time + _input_retry_interval > now) {
             continue;
         }
 
@@ -1463,7 +1488,8 @@ void Gekko::MessageSystem::SendInputsToPeer(Player* peer, GekkoNetAdapter* host,
     if (peer->input_cache.IsValid(peer->stats.last_acked_frame, last_input)) {
         // cache hit: nothing new to send, this is a pure re-send — rate limit it
         const u64 now = TimeSinceEpoch();
-        if (peer->last_input_send_time + NetStats::INPUT_RETRY_INTERVAL > now) {
+        // Hinokakera resilience patch: GekkoConfig::input_retry_ms (default 200).
+        if (peer->last_input_send_time + _input_retry_interval > now) {
             return;
         }
         for (const auto& cached_msg : peer->input_cache.packets) {

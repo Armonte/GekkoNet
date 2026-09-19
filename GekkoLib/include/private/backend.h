@@ -85,6 +85,11 @@ namespace Gekko {
 
 		u64 last_input_send_time = 0;
 
+		// Hinokakera resilience patch: true while inbound silence exceeded the interrupt
+		// timeout but not the disconnect timeout. The status stays Connected so the
+		// address, magic and send path survive; the first received packet clears it.
+		bool interrupted = false;
+
 		u8 disconnect_msgs_left = 0;
 
 		u64 last_disconnect_msg_time = 0;
@@ -135,7 +140,11 @@ namespace Gekko {
             u8 num_players,
             u32 input_size,
             u32 state_size = 0,
-            bool accept_spectator_state = false
+            bool accept_spectator_state = false,
+            // Hinokakera resilience patch: 0 = NetStats defaults.
+            u64 disconnect_timeout_ms = 0,
+            u64 interrupt_timeout_ms = 0,
+            u64 input_retry_ms = 0
         );
 
 		void AddInput(Frame input_frame, Handle player, u8 input[], bool remote = false);
@@ -268,7 +277,10 @@ namespace Gekko {
         void OnDisconnectClaim(NetAddress& addr, NetPacket& pkt);
 
 	private:
-		const u32 MAX_INPUT_QUEUE_SIZE = 128;
+		// Hinokakera resilience patch: 128 -> 1800 (30 s at 60 fps, as2). The cap bounds
+		// the unacknowledged resend window; 128 (about 2.1 s) force-dropped inputs during
+		// longer interruptions and corrupted the stream on resume.
+		const u32 MAX_INPUT_QUEUE_SIZE = 1800;
 	    const u32 NUM_TO_SYNC = 4;
 		const u8 NUM_DISCONNECT_MSGS = 5;
 
@@ -283,6 +295,11 @@ namespace Gekko {
 		u16 _session_magic;
 
 		u64 _disconnect_timeout;
+
+        // Hinokakera resilience patch: effective interrupt timeout and input resend interval (ms).
+        u64 _interrupt_timeout;
+
+        u64 _input_retry_interval;
 
         u8  _num_players;
 

@@ -21,6 +21,8 @@ namespace Gekko {
 
         void SetLocalDelay(i32 player, u8 delay) override;
 
+        void SetForcedRollback(u8 depth) override;
+
         void SetRunahead(u8 runahead) override;
 
         void SetNetAdapter(GekkoNetAdapter* adapter) override;
@@ -41,6 +43,15 @@ namespace Gekko {
             for (u8 i = 0; i < np && n < max; i++) out[n++] = (int)_sync.StallLastReceived(i);
             return n;
         }
+
+        // Hinokakera resilience patch: see gekko_add_local_input_ahead / gekko_prediction_depth.
+        bool AddLocalInputAhead(i32 player, void* input, i32 max_lead) override;
+
+        i32 PredictionDepth() override;
+
+        // hard cap on how far past the current frame local input may be produced
+        // (keeps both peers inside the 128-frame input ring for windows up to 32).
+        static const i32 MAX_INPUT_AHEAD_LEAD = 30;
 
         GekkoGameEvent** UpdateSession(i32* count) override;
 
@@ -86,6 +97,12 @@ namespace Gekko {
 
 		void HandleRollback();
 
+        // Harness: synthesize the depth-N rollback transaction (see GekkoConfig::forced_rollback_depth).
+        void HandleForcedRollback();
+
+        // true when this update's live advance of the current frame will run
+        bool CanAdvanceFrontier();
+
 		void HandleSavingConfirmedFrame();
 
 		void HandleRunahead();
@@ -100,6 +117,10 @@ namespace Gekko {
 
 		bool ShouldStallAdvance();
 
+        Frame RemotePredictionDepth();
+
+        bool IsStalledOnRemoteInput();
+
         void SendSessionHealthCheck();
 
         void SendNetworkHealthCheck();
@@ -110,6 +131,9 @@ namespace Gekko {
 		bool _started;
 
 		Frame _last_saved_frame;
+
+        u8 _forced_rollback_depth;      // 0 = off
+        u8 _forced_rollback_max;        // what the storage can hold
 
         Frame _last_sent_healthcheck;
         // [PovertyCaster #231] Frames at/above this were re-simulated by a rollback QUEUED THIS POLL and

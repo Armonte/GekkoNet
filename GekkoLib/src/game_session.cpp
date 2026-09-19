@@ -30,13 +30,21 @@ void Gekko::GameSession::Init(GekkoConfig* config)
     _sync.Init(_config.num_players, _config.input_size);
 
     // setup message system.
-    _msg.Init(_config.num_players, _config.input_size, _config.state_size);
+    // Hinokakera resilience patch: plumb the configured liveness timeouts (0 = defaults).
+    _msg.Init(_config.num_players, _config.input_size, _config.state_size, false,
+        _config.disconnect_timeout_ms, _config.interrupt_timeout_ms, _config.input_retry_ms);
 
     // setup game event system
     _game_events.Init(_config.input_size * _config.num_players);
 
-    // setup state storage
-    _storage.Init(_config.input_prediction_window, _config.state_size, _config.limited_saving);
+    // setup state storage (large enough for the forced rollback depth too)
+    _forced_rollback_depth = _config.forced_rollback_depth;
+    _forced_rollback_max = _config.forced_rollback_depth;
+    {
+        u32 states = _config.input_prediction_window;
+        if (_config.forced_rollback_depth > states) states = _config.forced_rollback_depth;
+        _storage.Init(states, _config.state_size, _config.limited_saving);
+    }
 
     _spectator_state.state = std::make_unique<u8[]>(_config.state_size);
     _spectator_state.state_len = _config.state_size;
@@ -52,6 +60,11 @@ void Gekko::GameSession::Init(GekkoConfig* config)
 void Gekko::GameSession::SetRunahead(u8 runahead)
 {
     _runahead_frames = runahead;
+}
+
+void Gekko::GameSession::SetForcedRollback(u8 depth)
+{
+    _forced_rollback_depth = depth > _forced_rollback_max ? _forced_rollback_max : depth;
 }
 
 void Gekko::GameSession::SetLocalDelay(i32 player, u8 delay)
@@ -169,6 +182,89 @@ void Gekko::GameSession::AddLocalInput(i32 player, void* input)
     }
 }
 
+bool Gekko::GameSession::AddLocalInputAhead(i32 player, void* input, i32 max_lead)
+{
+    // Hinokakera resilience patch: input production that survives a stalled simulation.
+    if (!input) {
+        return false;
+    }
+
+    bool is_local = false;
+    for (auto& local : _msg.locals) {
+        if (local->handle == player) {
+            is_local = true;
+            break;
+        }
+    }
+
+    if (!is_local) {
+        return false;
+    }
+
+    u8* inp = (u8*)input;
+    const Frame before = _sync.GetLastReceivedFrom(player);
+
+    // nothing produced yet: the regular path also fills the delay prefix.
+    if (before == GameInput::NULL_FRAME) {
+        _sync.AddLocalInput(player, inp);
+        return _sync.GetLastReceivedFrom(player) != before;
+    }
+
+    const Frame current = _sync.GetCurrentFrame();
+    const Frame regular = current + (Frame)_sync.GetLocalDelay(player);
+    const Frame target = before + 1;
+
+    // beyond the regular slot only while stalled on remote input and within the lead cap.
+    if (target > regular) {
+        if (!IsStalledOnRemoteInput()) {
+            return false;
+        }
+
+        Frame lead = max_lead < 0 ? 0 : (Frame)max_lead;
+        lead = std::min(lead, (Frame)MAX_INPUT_AHEAD_LEAD);
+
+        if (target > current + lead) {
+            return false;
+        }
+    }
+
+    _sync.AddLocalInputAt(player, inp, target);
+    return _sync.GetLastReceivedFrom(player) == target;
+}
+
+i32 Gekko::GameSession::PredictionDepth()
+{
+    // Hinokakera resilience patch: simulated frames resting on predicted remote input.
+    if (!_started || _msg.remotes.empty()) {
+        return 0;
+    }
+
+    const Frame depth = RemotePredictionDepth();
+    return depth > 0 ? depth : 0;
+}
+
+Frame Gekko::GameSession::RemotePredictionDepth()
+{
+    // (last simulated frame) - (lowest last received remote frame), may be negative.
+    Frame min_received = INT32_MAX;
+    for (auto& remote : _msg.remotes) {
+        min_received = std::min(min_received, _sync.GetLastReceivedFrom(remote->handle));
+    }
+
+    return (_sync.GetCurrentFrame() - 1) - min_received;
+}
+
+bool Gekko::GameSession::IsStalledOnRemoteInput()
+{
+    // the next frame can neither use a received remote input nor predict one:
+    // the prediction window is used up (lockstep: the remote input is missing).
+    if (!_started || _msg.remotes.empty()) {
+        return false;
+    }
+
+    return RemotePredictionDepth() >= (Frame)_config.input_prediction_window;
+}
+
 GekkoGameEvent** Gekko::GameSession::UpdateSession(i32* count)
 {
     // reset session events
@@ -196,6 +292,9 @@ GekkoGameEvent** Gekko::GameSession::UpdateSession(i32* count)
 
         // check if we need to rollback
         HandleRollback();
+
+        // harness: the synthesized per-frame rollback (after real corrections)
+        HandleForcedRollback();
 
         // check if we need to save the confirmed frame
         HandleSavingConfirmedFrame();
@@ -736,6 +835,79 @@ void Gekko::GameSession::HandleRollback()
     assert(_sync.GetCurrentFrame() == current);
 }
 
+// [PovertyCaster] DELIBERATELY DOES NOT SET _attest_stale_from, unlike HandleRollback. Read this before
+// "fixing" the asymmetry — it is load-bearing in both directions:
+//
+//   * WHY IT IS SAFE. #231's marker exists because a REAL rollback re-simulates with CORRECTED inputs, so
+//     the save events queued here will differ from what _storage holds right now, and SendSessionHealthCheck
+//     (later in this same poll, reading _storage directly) would attest a speculative value. A FORCED
+//     transaction replays the IDENTICAL input history, so the re-save is expected to be byte-identical and
+//     what _storage holds is already the confirmed-correct value. Attesting it is correct.
+//   * WHY SETTING IT WOULD BE HARMFUL. This runs on every advanced frontier, so _attest_stale_from would be
+//     current - depth every poll, capping attestation at confirmed <= current - depth - 1. At the depths this
+//     harness is used at (30) that is far below GetConfirmedFrame(), so cross-peer health checking would go
+//     SILENT for the whole run — disabling desync detection in exactly the runs that exist to prove there is
+//     none, and doing it invisibly (no events, just no comparisons).
+//
+// The two mechanisms are independent: a forced replay that does NOT reproduce the state is caught by the
+// app-side replay verification, not by attestation.
+void Gekko::GameSession::HandleForcedRollback()
+{
+    if (_forced_rollback_depth == 0 || !_started || _config.state_size == 0 || _config.limited_saving) {
+        return;
+    }
+    // the initial save (HandleRollback) must exist before anything can be loaded
+    if (_last_saved_frame == GameInput::NULL_FRAME - 1) {
+        return;
+    }
+    // exactly one transaction per advanced frontier: run it only in the update whose live
+    // advance of `current` follows, so it always replays the final history of the frontier
+    // (a stalled update runs none; a correction in a later update precedes the one cycle).
+    if (!CanAdvanceFrontier()) {
+        return;
+    }
+    const Frame current = _sync.GetCurrentFrame();
+    // load the state after frame `sync_frame` and replay sync_frame+1 .. current-1
+    // (depth frames). Early in the session the depth is clamped to what exists:
+    // the first save is labelled -1 (the state before frame 0).
+    Frame sync_frame = current - 1 - (Frame)_forced_rollback_depth;
+    if (sync_frame < -1) {
+        sync_frame = -1;
+    }
+    if (sync_frame >= current - 1) {
+        return;   // nothing to replay yet
+    }
+    StateEntry* entry = _storage.GetState(sync_frame);
+    if (entry == nullptr || entry->frame != sync_frame) {
+        return;   // not saved (evicted or never written)
+    }
+
+    _sync.SetCurrentFrame(sync_frame);
+    _game_events.AddLoadEvent(_sync, _storage, true);
+    _sync.IncrementFrame();
+
+    for (Frame frame = sync_frame + 1; frame < current; frame++) {
+        _game_events.AddAdvanceEvent(_sync, true);
+        _game_events.AddSaveEvent(_sync, _storage, &_last_saved_frame);
+        _sync.IncrementFrame();
+    }
+
+    assert(_sync.GetCurrentFrame() == current);
+}
+
+bool Gekko::GameSession::CanAdvanceFrontier()
+{
+    // the predicate UpdateSession's live advance uses (ShouldStallAdvance, then the input
+    // fetch inside AddAdvanceEvent). Nothing between here and the advance touches the input
+    // buffers, so the prediction this fetch may create is the one the advance reuses.
+    if (ShouldStallAdvance()) {
+        return false;
+    }
+    std::unique_ptr<u8[]> inputs;
+    Frame frame = GameInput::NULL_FRAME;
+    return _sync.GetCurrentInputs(inputs, frame);
+}
+
 void Gekko::GameSession::Poll()
 {
     // return if no host is defined.
@@ -800,7 +972,9 @@ void Gekko::GameSession::HandleReceivedInputs()
             const Frame last_recv = _sync.GetLastReceivedFrom(handle) + 1;
             const Frame last_added = _msg.GetLastAddedInputFrom(handle);
 
-            assert(last_added - last_recv <= 128); // more then 128 frames behind sounds incorrect.
+            // Hinokakera resilience patch: 128 -> 1800 to match MAX_INPUT_QUEUE_SIZE, a resume
+            // burst after a long interruption can deliver more than 128 frames in one poll.
+            assert(last_added - last_recv <= 1800); // more then 1800 frames behind sounds incorrect.
 
             auto& input_q = _msg.GetNetPlayerQueue(handle);
             const Frame min_frame = last_added - (i32)input_q.size() + 1;
@@ -826,7 +1000,9 @@ void Gekko::GameSession::SendLocalInputs()
         const Frame delay = GetMinLocalDelay();
 
         auto input = std::make_unique<u8[]>(_config.input_size);
-        for (Frame frame = current; frame <= current + delay; frame++) {
+        // Hinokakera resilience patch: also forward inputs produced ahead of the regular
+        // slot (gekko_add_local_input_ahead); the loop still stops at the first missing input.
+        for (Frame frame = current; frame <= current + delay + MAX_INPUT_AHEAD_LEAD; frame++) {
             for (auto& player : _msg.locals) {
                 if (!_sync.GetLocalInput(player->handle, input, frame)) {
                     return;

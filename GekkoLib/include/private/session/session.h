@@ -7,12 +7,18 @@
 struct GekkoSession {
     virtual void Init(GekkoConfig* config) = 0;
     virtual void SetLocalDelay(i32 player, u8 delay) {}
+    virtual void SetForcedRollback(u8 depth) {}
     virtual void SetRunahead(u8 runahead) {}
     virtual void SetNetAdapter(GekkoNetAdapter* adapter) {}
     virtual i32 AddActor(GekkoPlayerType type, GekkoNetAddress* addr) { return -1; }
     virtual bool DisconnectActor(i32 actor) { return false; }
     virtual void SetDisconnectTimeout(u32 timeout) {}
     virtual void AddLocalInput(i32 player, void* input) {}
+    // [hinokakera] Queue a local input allowed to run up to `max_lead` frames ahead of the
+    // confirmed frame; false when the lead would be exceeded. Used by the forced-rollback harness.
+    virtual bool AddLocalInputAhead(i32 player, void* input, i32 max_lead) { return false; }
+    // [hinokakera] Frames currently predicted beyond the last confirmed frame.
+    virtual i32 PredictionDepth() { return 0; }
     // [PovertyCaster #83] Inputs discarded from the send queue that a connected peer had not acked.
     // Default 0 for session kinds with no remote send queue (stress); GameSession overrides.
     virtual unsigned DiscardedUnacked() { return 0; }
