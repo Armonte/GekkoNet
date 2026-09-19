@@ -123,6 +123,7 @@ typedef struct GekkoGameEvent {
         } adv;
         struct GekkoSave {
             int frame;
+            bool portable;
             unsigned int* checksum;
             unsigned int* state_len;
             unsigned char* state;
