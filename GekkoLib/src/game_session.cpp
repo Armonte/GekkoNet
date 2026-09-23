@@ -989,6 +989,18 @@ void Gekko::GameSession::HandleReceivedInputs()
                     _msg.SendInputAck(handle, i, local_adv);
                 }
             }
+            // [PovertyCaster 2026-09-23] SAMPLE OUR SIDE THE WAY THE PEER SAMPLES ITS SIDE: at arrival. The
+            // peer's advantage (the ack above, as seen from its end) is measured at the instant a packet
+            // lands -- its minimum staleness. Ours used to be sampled EVERY frame in SendLocalInputs, so it
+            // also counted the wait between packets (plus jitter and loss). (avg_local - avg_remote)/2 then
+            // read POSITIVE on BOTH peers -- a common-mode bias, not a rift -- and both frame clocks slowed:
+            // measured on MBAA at NETSIM 80,15,1, FA > +0.5 on 22-24% of samples on BOTH peers, < -0.5 on
+            // 1-3%, and the session ran at 59.35 fps. Sampling at arrival makes the two terms the same
+            // measurement taken from opposite ends, which is what the halved difference assumes.
+            if (last_added >= last_recv) {
+                const i8 arrival_adv = (i8)(current_frame - last_added - local_delay);
+                remote->adv_history.SetLocalAdvantage(arrival_adv);
+            }
         }
     }
 }
@@ -1014,8 +1026,8 @@ void Gekko::GameSession::SendLocalInputs()
                 const Frame current_frame = _sync.GetCurrentFrame();
                 for (auto& remote : _msg.remotes) {
                     if (remote->GetStatus() == Connected) {
-                        const i8 local_adv = (i8)(current_frame - _sync.GetLastReceivedFrom(remote->handle) - (Frame)delay);
-                        remote->adv_history.SetLocalAdvantage(local_adv);
+                        // The local term is now set at packet ARRIVAL (the receive loop above), matching how
+                        // the peer measures its term; this per-frame site only records the history slot.
                         remote->adv_history.Update(frame);
                     }
                 }
