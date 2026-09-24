@@ -588,8 +588,13 @@ void Gekko::GameSession::CaptureSpectatorState()
     // A rollback session may be ahead of its confirmed frame. Re-simulate from
     // its latest persistent save, capture the confirmed state along the way,
     // and finish back at the state where this update started.
-    const Frame sync_frame = _last_saved_frame;
-    if (sync_frame >= state_frame) {
+    // With limited saving the latest persistent save is the only one. Otherwise every recent frame is stored
+    // and the latest save is already past the confirmed frame, so start from the frame just before it --
+    // needed when the stored states themselves are not portable.
+    const Frame sync_frame = (_config.nonportable_saves && !_config.limited_saving)
+        ? state_frame - 1
+        : _last_saved_frame;
+    if (sync_frame >= state_frame || sync_frame < 0) {
         return;
     }
 
