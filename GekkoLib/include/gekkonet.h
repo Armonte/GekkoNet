@@ -72,6 +72,10 @@ typedef struct GekkoConfig {
     bool limited_saving;
     bool desync_detection;
     unsigned int check_distance;
+    // set when the states handed out in save events are only meaningful to this process (e.g. stored as a
+    // delta against local data). late spectators then always receive a state captured with portable = true,
+    // never one taken from the rollback storage.
+    bool nonportable_saves;
 } GekkoConfig;
 
 typedef enum GekkoPlayerType {

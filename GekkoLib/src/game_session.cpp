@@ -669,7 +669,7 @@ void Gekko::GameSession::PrepareSpectatorStates()
             : std::max((Frame)-1, state_frame - (Frame)_config.max_input_prediction_window - 1);
 
         StateEntry* state = nullptr;
-        for (Frame frame = state_frame; frame >= oldest_state; frame--) {
+        for (Frame frame = state_frame; !_config.nonportable_saves && frame >= oldest_state; frame--) {
             auto candidate = _storage.GetState(frame);
             if (candidate->frame == frame && candidate->state_len > 0 &&
                 candidate->state_len <= _config.state_size) {
