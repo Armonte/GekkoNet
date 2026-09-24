@@ -673,8 +673,12 @@ void Gekko::GameSession::Poll()
     // process the data we received
     _msg.HandleData(_host, data, length);
 
-    // Existing sessions continue handshaking newly added spectators.
-    _msg.CheckStatusActors();
+    // Existing sessions continue handshaking newly added spectators. Before the start AllActorsValid owns
+    // the handshake; running it here as well let a peer see its remotes connected and start while they were
+    // still syncing, so peers started far apart and the early one rolled back until time sync caught up.
+    if (_started) {
+        _msg.CheckStatusActors();
+    }
 
     // handle received inputs
     HandleReceivedInputs();
