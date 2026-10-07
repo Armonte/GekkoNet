@@ -266,7 +266,9 @@ bool Gekko::ReplaySystem::LoadReplay(const u8* replay_data, u32 length)
 
     bool bad = true;
     try {
-        zpp::bits::in in(_bin_buffer);
+        // [security] a replay file is untrusted input: cap any single length-prefixed allocation (zpp resizes before
+        // checking the bytes remaining).
+        zpp::bits::in in(_bin_buffer, zpp::bits::alloc_limit<(64u << 20)>{});
         bad = failure(in(_replay.header, _replay.version));
 
         if (!bad && _replay.header == ReplayBlob::MAGIC) {
