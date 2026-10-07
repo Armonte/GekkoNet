@@ -177,7 +177,9 @@ void Gekko::MessageSystem::HandleData(GekkoNetAdapter* host, GekkoNetResult** da
         _bin_buffer.insert(_bin_buffer.begin(), (u8*)res->data, (u8*)res->data + res->data_len);
 
         NetPacket pkt;
-        zpp::bits::in in(_bin_buffer);
+        // [security] cap every length-prefixed allocation at a datagram's size: zpp resizes a vector BEFORE checking the
+        // bytes remaining, so one packet with a forged length prefix made the receiver allocate up to 4 GB.
+        zpp::bits::in in(_bin_buffer, zpp::bits::alloc_limit<0x10000>{});
 
         if (failure(in(pkt.header, pkt.body))) {
             printf("failed to deserialize packet\n");
