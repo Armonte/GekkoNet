@@ -40,7 +40,7 @@ namespace Gekko {
 
     struct MsgHeader {
         PacketType type;
-        u16 magic;
+        u64 magic;   // [security] 64-bit CSPRNG session id (was u16 std::rand)
     };
 
     struct InputMsg {
@@ -58,7 +58,7 @@ namespace Gekko {
     };
 
     struct SyncMsg {
-        u16 rng_data;
+        u64 rng_data;
     };
 
     struct SessionHealthMsg {

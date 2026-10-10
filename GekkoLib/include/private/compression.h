@@ -56,6 +56,23 @@ namespace Gekko {
             return result;
         }
 
+        // RLEDecode with a hard cap on the decoded size. Returns false (and leaves `out` unspecified) if the stream
+        // would decode to more than `max_out` bytes. `out` is reserved up front, so a hostile stream costs at most
+        // `max_out` bytes of memory, never a multiple of the datagram size.
+        static bool RLEDecodeBounded(const uint8_t* data, u32 length, u32 max_out, std::vector<uint8_t>& out) {
+            out.clear();
+            out.reserve(max_out);
+            u64 total = 0;
+            for (u32 idx = 0; idx + 1 < length; idx += 2) {
+                total += data[idx];
+                if (total > max_out) {
+                    return false;
+                }
+                out.insert(out.end(), data[idx], data[idx + 1]);
+            }
+            return true;
+        }
+
         static std::vector<uint8_t> DeltaEncode(const uint8_t* data, u32 length, u32 stride) {
             std::vector<uint8_t> result(length);
             for (u32 i = 0; i < length; i++) {

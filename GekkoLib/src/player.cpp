@@ -1,6 +1,6 @@
 #include "backend.h"
 
-Gekko::Player::Player(Handle phandle, GekkoPlayerType type, NetAddress* addr, u32 magic)
+Gekko::Player::Player(Handle phandle, GekkoPlayerType type, NetAddress* addr, u64 magic)
 {
 	handle = phandle;
 	sync_num = 0;
