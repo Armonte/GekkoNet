@@ -178,6 +178,7 @@ void Gekko::MessageSystem::HandleData(GekkoNetAdapter* host, GekkoNetResult** da
         // [security] size gate BEFORE any copy or allocation: a datagram is a header + a body and never
         // legitimately exceeds MAX_PACKET_BYTES; anything shorter than a header cannot parse.
         if (res->data_len < MIN_PACKET_BYTES || res->data_len > MAX_PACKET_BYTES || !res->data) {
+            _dropped_packets++;
             host->free_data(res->addr.data);
             host->free_data(res->data);
             host->free_data(res);
@@ -195,14 +196,14 @@ void Gekko::MessageSystem::HandleData(GekkoNetAdapter* host, GekkoNetResult** da
         // [security] untrusted bytes: nothing a peer sends may unwind past here (std::terminate would kill the game).
         try {
             if (failure(in(pkt.header, pkt.body))) {
-                printf("failed to deserialize packet\n");
+                _dropped_packets++;   // no printf: a console write per hostile datagram is itself a DoS
             }
             else {
                 ParsePacket(addr, pkt, res->data_len);
             }
         }
         catch (...) {
-            printf("dropped a packet that threw while parsing\n");
+            _dropped_packets++;
         }
 
         // cleanup :)
@@ -931,6 +932,7 @@ void Gekko::MessageSystem::ParsePacket(NetAddress& addr, NetPacket& pkt, u32 pac
             // FM2K patch: silently drop a magic-mismatched packet. Each peer holds its own random
             // _session_magic until SyncRequest/Response reconcile them, so this fires during every
             // session start; upstream prints "dropped packet!" and users read it as packet loss.
+            _dropped_packets++;   // wrong session magic
         }
     }
     else {
