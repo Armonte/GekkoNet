@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "zpp/zpp_bits.h"
+#include "secure_random.h"
 
 Gekko::MessageSystem::MessageSystem()
 {
@@ -17,9 +18,8 @@ Gekko::MessageSystem::MessageSystem()
     _interrupt_timeout = 0;   // Hinokakera: interrupts OFF until a session opts in (GekkoConfig::interrupt_timeout_ms)
     _input_retry_interval = NetStats::INPUT_RETRY_INTERVAL;
 
-	// gen magic for session
-	std::srand((unsigned int)std::time(nullptr));
-	_session_magic = std::rand();
+	// gen magic for session: 64 bits from the OS CSPRNG (never std::rand: 15 bits, time-seeded, brute-forceable)
+	_session_magic = SecureSessionMagic();
 
     session_events = SessionEventSystem();
 }
@@ -175,6 +175,15 @@ void Gekko::MessageSystem::HandleData(GekkoNetAdapter* host, GekkoNetResult** da
         auto res = data[i];
         auto addr = NetAddress(res->addr.data, res->addr.size);
 
+        // [security] size gate BEFORE any copy or allocation: a datagram is a header + a body and never
+        // legitimately exceeds MAX_PACKET_BYTES; anything shorter than a header cannot parse.
+        if (res->data_len < MIN_PACKET_BYTES || res->data_len > MAX_PACKET_BYTES || !res->data) {
+            host->free_data(res->addr.data);
+            host->free_data(res->data);
+            host->free_data(res);
+            continue;
+        }
+
         _bin_buffer.clear();
         _bin_buffer.insert(_bin_buffer.begin(), (u8*)res->data, (u8*)res->data + res->data_len);
 
@@ -183,11 +192,17 @@ void Gekko::MessageSystem::HandleData(GekkoNetAdapter* host, GekkoNetResult** da
         // bytes remaining, so one packet with a forged length prefix made the receiver allocate up to 4 GB.
         zpp::bits::in in(_bin_buffer, zpp::bits::alloc_limit<0x10000>{});
 
-        if (failure(in(pkt.header, pkt.body))) {
-            printf("failed to deserialize packet\n");
+        // [security] untrusted bytes: nothing a peer sends may unwind past here (std::terminate would kill the game).
+        try {
+            if (failure(in(pkt.header, pkt.body))) {
+                printf("failed to deserialize packet\n");
+            }
+            else {
+                ParsePacket(addr, pkt, res->data_len);
+            }
         }
-        else {
-            ParsePacket(addr, pkt, res->data_len);
+        catch (...) {
+            printf("dropped a packet that threw while parsing\n");
         }
 
         // cleanup :)
@@ -217,7 +232,7 @@ void Gekko::MessageSystem::SendSyncRequest(NetAddress* addr)
     message->pkt.body = body;
 }
 
-void Gekko::MessageSystem::SendSyncResponse(NetAddress* addr, u16 magic)
+void Gekko::MessageSystem::SendSyncResponse(NetAddress* addr, u64 magic)
 {
     if (!addr || magic == 0) {
         return;
@@ -236,7 +251,7 @@ void Gekko::MessageSystem::SendSyncResponse(NetAddress* addr, u16 magic)
     message->pkt.body = body;
 }
 
-void Gekko::MessageSystem::SendDisconnect(NetAddress* addr, u16 magic)
+void Gekko::MessageSystem::SendDisconnect(NetAddress* addr, u64 magic)
 {
     if (!addr || magic == 0) {
         return;
@@ -950,8 +965,7 @@ void Gekko::MessageSystem::ParsePacket(NetAddress& addr, NetPacket& pkt, u32 pac
             OnDisconnectClaim(addr, pkt);
             return;
         default:
-            assert(false && "cannot process an unknown event!");
-            return;
+            return;   // [security] header.type is peer-chosen: an unknown type is a drop, never an assert
         }
     }
 }
@@ -976,7 +990,18 @@ void Gekko::MessageSystem::OnSyncRequest(NetAddress& addr, NetPacket& pkt)
 
         for (auto& player : *current) {
             if (player->address.Equals(addr)) {
-                player->session_magic = body->rng_data;
+                // [security] the peer's magic is learned ONCE and then locked. Before this, any datagram from the
+                // peer's address rewrote it (even on a Connected session), after which every packet we sent was
+                // dropped by the real peer. A request whose magic differs from the locked one is ignored.
+                if (body->rng_data == 0) {
+                    continue;
+                }
+                if (player->session_magic == 0) {
+                    player->session_magic = body->rng_data;
+                }
+                else if (player->session_magic != body->rng_data) {
+                    continue;
+                }
                 if (player->sync_num == 0) {
                     player->stats.last_sent_sync_message = now;
                     should_send++;
@@ -1017,6 +1042,11 @@ void Gekko::MessageSystem::OnSyncResponse(NetAddress& addr, NetPacket& pkt)
             }
 
             if (player->address.Equals(addr)) {
+                // [security] same lock as OnSyncRequest: never overwrite a learned magic.
+                if (body->rng_data == 0 ||
+                    (player->session_magic != 0 && player->session_magic != body->rng_data)) {
+                    continue;
+                }
                 player->session_magic = body->rng_data;
                 if (player->sync_num < NUM_TO_SYNC) {
                     player->sync_num++;
@@ -1055,19 +1085,42 @@ void Gekko::MessageSystem::OnInputs(NetAddress& addr, NetPacket& pkt)
 
     const bool is_spectator = (pkt.header.type == SpectatorInputs);
 
+    // [security] SpectatorInputs write EVERY player's queue, so only a session that IS a spectator may take them.
+    if (is_spectator && !_accept_spectator_state) {
+        return;
+    }
+
+    const Frame start_frame = body->start_frame;
+    const u32 input_count = body->input_count;
+
+    // [security] bound the claimed shape before looking at the payload.
+    if (input_count > MAX_INPUT_QUEUE_SIZE || _input_size == 0 || _num_players == 0) {
+        return;
+    }
+    const u32 senders = is_spectator ? (u32)_num_players : (u32)GetRemoteHandlesForAddress(&addr).size();
+    // the exact decoded payload size this packet may legitimately carry
+    const u64 max_decoded = (u64)input_count * senders * _input_size;
+    if (max_decoded > MAX_PACKET_BYTES * 64ull) {
+        return;
+    }
+
     // reverse RLE + delta if the sender compressed this packet
     if (body->compressed) {
         if (body->inputs.size() % 2 != 0) {
             return;
         }
 
-        auto decompressed = Compression::RLEDecode(body->inputs.data(), (u32)body->inputs.size());
+        // [security] decode with a hard output cap (was unbounded: 2 bytes -> 255 bytes amplification)
+        std::vector<u8> decompressed;
+        if (!Compression::RLEDecodeBounded(body->inputs.data(), (u32)body->inputs.size(), (u32)max_decoded, decompressed)) {
+            return;
+        }
         const u32 stride = is_spectator ? _input_size * _num_players : _input_size;
         body->inputs = Compression::DeltaDecode(decompressed.data(), (u32)decompressed.size(), stride);
     }
-
-    const Frame start_frame = body->start_frame;
-    const u32 input_count = body->input_count;
+    else if (body->inputs.size() > max_decoded) {
+        return;
+    }
 
     if (is_spectator) {
         if ((u64)input_count * _num_players * _input_size > body->inputs.size()) {
@@ -1158,15 +1211,23 @@ void Gekko::MessageSystem::OnSessionHealth(NetAddress& addr, NetPacket& pkt)
 
     for (auto& player : remotes) {
         if (player->address.Equals(addr)) {
-            player->SetChecksum(frame, checksum);
+            const Frame last = _net_player_queue[player->handle].last_added_input;
 
+            // [security] only frames inside a window around the peer's input head are recorded: a peer-chosen
+            // far-future frame used to stay forever and grow the map (and the per-packet scan below) without bound.
+            if ((i64)frame >= (i64)last - HEALTH_WINDOW_BEHIND && (i64)frame <= (i64)last + HEALTH_WINDOW_AHEAD) {
+                player->SetChecksum(frame, checksum);
+            }
+
+            // ordered map: stale keys sit at the front, so stop at the first live one
             for (auto iter = player->session_health.begin();
-                iter != player->session_health.end(); ) {
-                if (iter->first < (_net_player_queue[player->handle].last_added_input - 128)) {
-                    iter = player->session_health.erase(iter);
-                } else {
-                    ++iter;
-                }
+                iter != player->session_health.end() && (i64)iter->first < (i64)last - HEALTH_WINDOW_BEHIND; ) {
+                iter = player->session_health.erase(iter);
+            }
+            // anything left beyond the ahead-window (the head moved back, e.g. spectator state) is dropped too
+            while (!player->session_health.empty() &&
+                   (i64)player->session_health.rbegin()->first > (i64)last + HEALTH_WINDOW_AHEAD) {
+                player->session_health.erase(std::prev(player->session_health.end()));
             }
             break;
         }
@@ -1385,9 +1446,12 @@ void Gekko::MessageSystem::OnDisconnectClaim(NetAddress& addr, NetPacket& pkt)
         return;
     }
 
-    // the carried inputs must cover the claimed frame range.
-    const u64 expected = (u64)(body->last_frame - body->start_frame + 1) * _input_size;
-    if (body->last_frame < body->start_frame || body->inputs.size() < expected) {
+    // the carried inputs must cover the claimed frame range. [security] computed in i64: i32 subtraction of
+    // INT32_MIN/MAX wrapped to 0, passing the size check with an EMPTY vector and then reading out of bounds.
+    const i64 span = (i64)body->last_frame - (i64)body->start_frame + 1;
+    if (body->start_frame < 0 || body->last_frame < body->start_frame ||
+        span > (i64)MAX_INPUT_QUEUE_SIZE || _input_size == 0 ||
+        (u64)body->inputs.size() != (u64)span * _input_size) {
         return;
     }
 
@@ -1430,7 +1494,7 @@ void Gekko::MessageSystem::OnDisconnectClaim(NetAddress& addr, NetPacket& pkt)
     }
 
     for (Frame frame = std::max(next, body->start_frame); frame <= body->last_frame; frame++) {
-        u8* input = &body->inputs[(frame - body->start_frame) * _input_size];
+        u8* input = &body->inputs[(size_t)(frame - body->start_frame) * _input_size];
         AddInput(frame, body->player, input, true);
     }
 

@@ -58,7 +58,7 @@ namespace Gekko {
 	class Player
 	{
 	public:
-		Player(Handle phandle, GekkoPlayerType type, NetAddress* addr, u32 magic = 0);
+		Player(Handle phandle, GekkoPlayerType type, NetAddress* addr, u64 magic = 0);
 
         GekkoPlayerType GetType();
 
@@ -73,7 +73,7 @@ namespace Gekko {
 
 		u8 sync_num;
 
-		u16 session_magic;
+		u64 session_magic;
 
 		NetStats stats;
 
@@ -224,9 +224,9 @@ namespace Gekko {
 	private:
 		void SendSyncRequest(NetAddress* addr);
 
-		void SendSyncResponse(NetAddress* addr, u16 magic);
+		void SendSyncResponse(NetAddress* addr, u64 magic);
 
-		void SendDisconnect(NetAddress* addr, u16 magic);
+		void SendDisconnect(NetAddress* addr, u64 magic);
 
 		void SendPendingDisconnects();
 
@@ -282,6 +282,14 @@ namespace Gekko {
 		// longer interruptions and corrupted the stream on resume.
 		const u32 MAX_INPUT_QUEUE_SIZE = 1800;
         const u32 MAX_SPECTATOR_INPUT_QUEUE_SIZE = 600;
+
+        // [security] hard datagram bounds, applied before any allocation or copy. MAX matches the transport's
+        // largest datagram (and the zpp alloc_limit below); MIN is the smallest header + empty body.
+        static constexpr u32 MAX_PACKET_BYTES = 0x10000;
+        static constexpr u32 MIN_PACKET_BYTES = 3;
+        // session_health entries kept per peer: [last_added - 128, last_added + HEALTH_WINDOW_AHEAD]
+        static constexpr Frame HEALTH_WINDOW_BEHIND = 128;
+        static constexpr Frame HEALTH_WINDOW_AHEAD = 256;
 	    const u32 NUM_TO_SYNC = 4;
 		const u8 NUM_DISCONNECT_MSGS = 5;
 
@@ -293,7 +301,7 @@ namespace Gekko {
 
         bool _accept_spectator_state;
 
-		u16 _session_magic;
+		u64 _session_magic;
 
 		u64 _disconnect_timeout;
 
@@ -323,7 +331,7 @@ namespace Gekko {
 
         struct PendingDisconnect {
             NetAddress address;
-            u16 session_magic = 0;
+            u64 session_magic = 0;
             u8 messages_left = 0;
             u64 last_message_time = 0;
         };
