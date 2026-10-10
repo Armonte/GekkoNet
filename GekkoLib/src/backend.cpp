@@ -176,6 +176,7 @@ void Gekko::MessageSystem::HandleData(GekkoNetAdapter* host, GekkoNetResult** da
         // [security] size gate BEFORE any copy or allocation: a datagram is a header + a body and never
         // legitimately exceeds MAX_PACKET_BYTES; anything shorter than a header cannot parse.
         if (res->data_len < MIN_PACKET_BYTES || res->data_len > MAX_PACKET_BYTES || !res->data) {
+            _dropped_packets++;
             host->free_data(res->addr.data);
             host->free_data(res->data);
             host->free_data(res);
@@ -193,14 +194,14 @@ void Gekko::MessageSystem::HandleData(GekkoNetAdapter* host, GekkoNetResult** da
         // [security] untrusted bytes: nothing a peer sends may unwind past here (std::terminate would kill the game).
         try {
             if (failure(in(pkt.header, pkt.body))) {
-                printf("failed to deserialize packet\n");
+                _dropped_packets++;   // no printf: a console write per hostile datagram is itself a DoS
             }
             else {
                 ParsePacket(addr, pkt, res->data_len);
             }
         }
         catch (...) {
-            printf("dropped a packet that threw while parsing\n");
+            _dropped_packets++;
         }
 
         // cleanup :)
@@ -922,7 +923,7 @@ void Gekko::MessageSystem::ParsePacket(NetAddress& addr, NetPacket& pkt, u32 pac
             OnSyncRequest(addr, pkt);
         }
         else {
-            printf("dropped packet!\n");
+            _dropped_packets++;   // wrong session magic
         }
     }
     else {

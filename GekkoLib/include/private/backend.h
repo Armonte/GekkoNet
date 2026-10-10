@@ -285,6 +285,8 @@ namespace Gekko {
         // [security] hard datagram bounds, applied before any allocation or copy. MAX matches the transport's
         // largest datagram (and the zpp alloc_limit below); MIN is the smallest header + empty body.
         static constexpr u32 MAX_PACKET_BYTES = 0x10000;
+        // datagrams discarded by the parser (oversize, undecodable, wrong magic); a counter, never a console write
+        u64 _dropped_packets = 0;
         static constexpr u32 MIN_PACKET_BYTES = 3;
         // session_health entries kept per peer: [last_added - 128, last_added + HEALTH_WINDOW_AHEAD]
         static constexpr Frame HEALTH_WINDOW_BEHIND = 128;
