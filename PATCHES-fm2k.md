@@ -101,3 +101,10 @@ harness to upstream frames-ahead; split and gate before pinning.
 port, PovertyCaster, ymir, and wanwan's replacement) pin this commit so the wire format is identical and the
 playerbase stays one. Deliberately NOT carried: wanwan's `gekko_wire_stats()`/`gekko_ack_guard_stats()` (only
 the retiring wanwan launcher calls them).
+
+13. **Lazy checksum callback** (`gekko_set_checksum_callback`, from ymir `ef8fd52`). Optional: when set,
+    GekkoNet asks for a stored state's checksum at the moment it compares one (health check / desync
+    detection) instead of using the value the save event wrote, so rollback re-simulation saves need not
+    hash anything. NULL keeps the previous behavior bit-for-bit (verified: a default-config stress run is
+    byte-identical to L4). ymir's adapter calls it at 4 sites, so it is a LIVE dependency, not dead
+    surface -- folded before the pin so one commit serves all four superprojects.
