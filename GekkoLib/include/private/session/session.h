@@ -45,4 +45,8 @@ struct GekkoSession {
     virtual bool LoadReplay(const u8* replay_data, u32 length) { return false; }
     virtual const u8* ReplayUserData(u32& length) { length = 0; return nullptr; }
     virtual ~GekkoSession() = default;
+
+    // lazy checksum (gekko_set_checksum_callback); null = use the checksum written by the save event.
+    GekkoChecksumFn checksum_fn = nullptr;
+    void* checksum_user = nullptr;
 };

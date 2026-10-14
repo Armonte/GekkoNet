@@ -81,6 +81,12 @@ void gekko_set_forced_rollback(GekkoSession* session, unsigned char depth)
     session->SetForcedRollback(depth);
 }
 
+void gekko_set_checksum_callback(GekkoSession* session, GekkoChecksumFn fn, void* user)
+{
+    session->checksum_fn = fn;
+    session->checksum_user = user;
+}
+
 void gekko_set_runahead(GekkoSession* session, unsigned char runahead)
 {
     session->SetRunahead(runahead);

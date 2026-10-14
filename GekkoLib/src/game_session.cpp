@@ -635,7 +635,11 @@ void Gekko::GameSession::SendSessionHealthCheck()
             return;
         }
 
-        checksum = sav->checksum;
+        // Lazy checksum: route the stored state's checksum through the optional callback (null = the
+        // value written by the save event, i.e. behavior-free by default).
+        checksum = checksum_fn
+            ? checksum_fn(checksum_user, confirmed, sav->state.get(), sav->state_len)
+            : sav->checksum;
     }
 
     _last_sent_healthcheck = confirmed;
