@@ -32,3 +32,10 @@ Deliberately NOT here:
 - **`CMakeLists.txt` local edits** (C++17, include dirs) from wanwan — not needed; upstream builds.
 
 Convergence target and verification: `fm2k-port/docs/GEKKONET_AUDIT.md`.
+
+5. **Connect-race guard in `GameSession::Poll`** (`game_session.cpp`, from `Armonte/GekkoNet ymir`
+   `610080d`): `CheckStatusActors()` now runs only once the session `_started`. Unguarded, a peer could
+   mark its remotes connected and start while they were still syncing, then start far ahead and roll
+   back continuously. Before the start `AllActorsValid()` already drives the handshake; late spectators
+   need the per-poll handshake only once running. Measured on the fm2k-port 2-peer loopback as a
+   persistent one-sided asymmetry (one peer ~222 rollbacks, the other 0); guard removes it.
