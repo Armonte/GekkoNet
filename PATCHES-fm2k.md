@@ -108,3 +108,18 @@ the retiring wanwan launcher calls them).
     hash anything. NULL keeps the previous behavior bit-for-bit (verified: a default-config stress run is
     byte-identical to L4). ymir's adapter calls it at 4 sites, so it is a LIVE dependency, not dead
     surface -- folded before the pin so one commit serves all four superprojects.
+
+14. **L5: PovertyCaster security hardening** (PovertyCaster `8f03840`, `c3905fb`, `c189245`; branch `l5-hardening`,
+    NOT yet tagged -- 2026-10-14, awaiting the user's OK to tag and repin).
+    - `90593ae` zpp `alloc_limit` on every untrusted decode: packets 64 KiB, replays 64 MiB (zpp resizes a
+      length-prefixed container BEFORE checking the bytes remaining). Kept upstream's versioned replay parse.
+    - `fed7d26` packet decode hardening: hard datagram bounds before any allocation/copy (`MIN/MAX_PACKET_BYTES`),
+      bounded RLE, decode under try/catch, the peer's session magic LOCKED after sync, a bounded per-peer
+      `session_health` window, and a **64-bit CSPRNG session magic (was `u16` from `std::rand`)**.
+    - `a9be90f` hostile/mismatched datagrams are COUNTED (`_dropped_packets`), never printed (a console write per
+      hostile packet is itself a DoS). Supersedes patch 1's "quiet magic drop" comment, keeps its intent.
+    **WIRE BREAK:** the session magic in the packet header and sync messages widens from 16 to 64 bits, so an L5 peer
+    and an L4 peer cannot connect. This is the point of one canonical pin: PovertyCaster main has carried this
+    hardening (on its own fork pin `c189245e`) and was therefore already wire-incompatible with the L4 tag; L5 lets
+    all four superprojects meet again, but they must move to it TOGETHER (one release window, and the launcher's
+    version/compat check bumped).
