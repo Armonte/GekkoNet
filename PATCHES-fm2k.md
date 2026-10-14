@@ -60,3 +60,13 @@ Not yet folded (L3, PC `a5d9181`): the Aquat1c bundle -- `forced_rollback_depth`
 `gekko_add_local_input_ahead`, disconnect/interrupt/input-retry timeouts, new event enum values. It is 393
 lines across 14 files and its storage sizing (`max(prediction_window, forced_depth)`) couples the forced
 harness to upstream frames-ahead; split and gate before pinning.
+
+9. **Forced rollback: `GekkoConfig::forced_rollback_depth` + `gekko_set_forced_rollback` +
+   `gekko_prediction_depth`** (`gekkonet.h`, `game_session.*`, `event.*`, `session.h`; PC `a5d9181`,
+   split). Synthesizes a rollback transaction of the configured depth on every advanced frontier (load
+   the state `depth` frames back, replay the recorded inputs, re-save each), giving a peer that would
+   never otherwise re-simulate the rollback path. Load events carry `forced = true`. State storage stays
+   sized to the prediction window (upstream); the forced depth is CLAMPED to it, so it does not couple to
+   upstream frames-ahead. Public delta: 2 symbols -- the rest of `a5d9181`'s Aquat1c bundle (liveness
+   timeouts, Interrupted/Resumed, `gekko_add_local_input_ahead`, the 128->1800 queue bump) is deferred to
+   L3b and has no consumer on the chain today.
