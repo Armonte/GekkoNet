@@ -28,6 +28,8 @@ namespace Gekko {
 
         GekkoGameEvent** UpdateSession(i32* count) override;
 
+        i32 ConfirmedFrame() override;
+
         GekkoSessionEvent** Events(i32* count) override;
 
         bool StartRecording(bool save_initial_state, bool disable_compression) override;

@@ -240,6 +240,10 @@ GEKKONET_API GekkoSessionEvent** gekko_session_events(GekkoSession* session, int
 // the average amount of frames this session runs ahead of its remote players, input delays included.
 GEKKONET_API float gekko_frames_ahead(GekkoSession* session);
 
+// FM2K patch: highest frame whose inputs from ALL players were actually RECEIVED (never predicted).
+// -1 until inputs flow. For gating replay / spectator recording on confirmed-only inputs.
+GEKKONET_API int gekko_confirmed_frame(GekkoSession* session);
+
 // spectator sessions: received frames not played yet. 0 for other sessions.
 GEKKONET_API int gekko_spectator_buffered_frames(GekkoSession* session);
 

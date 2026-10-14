@@ -34,6 +34,8 @@ namespace Gekko {
 
         void NetworkStats(i32 player, GekkoNetworkStats* stats) override;
 
+        i32 ConfirmedFrame() override;
+
         void NetworkPoll() override;
 
         bool StartRecording(bool save_initial_state, bool disable_compression) override;

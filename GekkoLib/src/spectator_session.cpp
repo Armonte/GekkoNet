@@ -368,3 +368,8 @@ bool Gekko::SpectatorSession::ShouldDelaySpectator()
 
     return false;
 }
+
+i32 Gekko::SpectatorSession::ConfirmedFrame()
+{
+    return _sync.GetMinReceivedFrame();
+}

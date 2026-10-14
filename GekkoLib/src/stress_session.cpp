@@ -37,6 +37,7 @@ void Gekko::StressSession::SetLocalDelay(i32 player, u8 delay)
             _sync.SetLocalDelay(player, delay);
         }
     }
+
 }
 
 i32 Gekko::StressSession::AddActor(GekkoPlayerType type, GekkoNetAddress* addr)
@@ -202,4 +203,9 @@ void Gekko::StressSession::CheckForDesyncs(Frame check_frame)
             _checksum_history.emplace(check_frame, state->checksum);
         }
     } 
+}
+
+i32 Gekko::StressSession::ConfirmedFrame()
+{
+    return _sync.GetMinReceivedFrame();
 }

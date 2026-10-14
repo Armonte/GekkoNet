@@ -498,7 +498,16 @@ void Gekko::GameSession::SendSessionHealthCheck()
 
         auto sav = _storage.GetState(confirmed);
 
-        assert(sav->frame == confirmed);
+        // FM2K patch: StateStorage::GetState is a bare ring index with no validation, so once the
+        // confirmed frame falls further behind than the ring is deep (packet loss / high delay), the
+        // slot already holds a NEWER frame. Upstream only asserts this and the assert is compiled out
+        // of release, so the stale slot's NON-ZERO checksum would be sent labelled `confirmed` and two
+        // healthy peers would tear the session down over a desync that never happened. The unwritten
+        // slot is checksum 0 and filterable downstream; the recycled slot is not. Skip, and leave
+        // _last_sent_healthcheck unset so the next frame retries with a slot that is still live.
+        if (!sav || sav->frame != confirmed) {
+            return;
+        }
 
         checksum = sav->checksum;
     }
@@ -1008,4 +1017,9 @@ void Gekko::GameSession::HandleRunahead()
 
     // Reset back to the real frame so AddLocalInput and network logic see the correct frame
     _sync.SetCurrentFrame(_runahead_start_frame);
+}
+
+i32 Gekko::GameSession::ConfirmedFrame()
+{
+    return _sync.GetMinReceivedFrame();
 }

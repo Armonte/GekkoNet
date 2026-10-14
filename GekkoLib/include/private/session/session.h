@@ -17,6 +17,10 @@ struct GekkoSession {
     virtual GekkoGameEvent** UpdateSession(i32* count) = 0;
     virtual GekkoSessionEvent** Events(i32* count) = 0;
     virtual f32 FramesAhead() { return 0.f; }
+    // FM2K patch: highest frame for which inputs from ALL players have actually been RECEIVED
+    // (no predictions). NULL_FRAME until inputs flow. Lets a host gate replay / spectator
+    // recording on confirmed-only inputs.
+    virtual i32 ConfirmedFrame() { return 0; }
     virtual i32 SpectatorBufferedFrames() { return 0; }
     virtual void NetworkStats(i32 player, GekkoNetworkStats* stats) {}
     virtual void NetworkPoll() {}

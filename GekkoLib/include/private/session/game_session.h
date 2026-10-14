@@ -41,6 +41,8 @@ namespace Gekko {
 
         f32 FramesAhead() override;
 
+        i32 ConfirmedFrame() override;
+
         void NetworkStats(i32 player, GekkoNetworkStats* stats) override;
 
         void NetworkPoll() override;

@@ -857,7 +857,9 @@ void Gekko::MessageSystem::ParsePacket(NetAddress& addr, NetPacket& pkt, u32 pac
             OnSyncRequest(addr, pkt);
         }
         else {
-            printf("dropped packet!\n");
+            // FM2K patch: silently drop a magic-mismatched packet. Each peer holds its own random
+            // _session_magic until SyncRequest/Response reconcile them, so this fires during every
+            // session start; upstream prints "dropped packet!" and users read it as packet loss.
         }
     }
     else {
@@ -1061,6 +1063,16 @@ void Gekko::MessageSystem::OnInputAck(NetAddress& addr, NetPacket& pkt)
     const Frame ack_frame = body->ack_frame;
     const i8 remote_advantage = (i8)body->frame_advantage;
 
+    // FM2K patch (#56 root fix): an ack can only cover frames we actually SENT. A stale ack
+    // straggling across a session transition carries the PREVIOUS session's frame counts; taking it
+    // poisons last_acked_frame with a huge value, SendInputsToPeer's "peer is caught up" gate goes
+    // permanently true, and this side silently STOPS SENDING INPUTS forever while ping/health keep
+    // flowing (peer sees conf=-1, in_pkts=0, our acks_in=1). Reject it. Provenance: local
+    // wallclock/ack notes taken from the Avatar Fighting Legends RealMatch netcode.
+    const Frame last_sent = GetLastAddedInput(false);
+    if (ack_frame > last_sent) {
+        return;   // acking frames we never sent: stale / foreign packet
+    }
     for (auto& player : remotes) {
         if (player->address.Equals(addr) && player->stats.last_acked_frame < ack_frame) {
             player->stats.last_acked_frame = ack_frame;
@@ -1069,6 +1081,8 @@ void Gekko::MessageSystem::OnInputAck(NetAddress& addr, NetPacket& pkt)
     }
 
     for (auto& player : spectators) {
+        // FM2K patch: the same stale-ack guard against the spectator input queue (#56).
+        if (ack_frame > _net_spectator_queue.last_added_input) continue;
         if (player->address.Equals(addr) && player->stats.last_acked_frame < ack_frame) {
             player->stats.last_acked_frame = ack_frame;
         }
