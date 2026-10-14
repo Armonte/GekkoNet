@@ -586,6 +586,34 @@ void Gekko::GameSession::SendSessionHealthCheck()
         const Frame current = _sync.GetCurrentFrame();
         confirmed = (current - _config.max_input_prediction_window) - 1;
 
+        // L4 (from PovertyCaster #231, hole 1): THE ARITHMETIC WINDOW IS NOT CONFIRMATION.
+        // `current - window - 1` assumes every remote input that old HAS ARRIVED. Under jitter/loss an
+        // input can arrive later than the window: the save for that frame was made with a PREDICTED
+        // input, its checksum is speculative, and a later rollback corrects the STATE but not the
+        // already-sent attestation -- so the peer compares it against its own (correct) checksum and both
+        // sides tear down a healthy match over a desync that never happened (measured by PovertyCaster at
+        // detection f=994, ring dumps byte-identical). Attest only a frame whose real inputs all exist:
+        // cap at GetMinReceivedFrame(). The patch-4 slot check below catches a recycled/unwritten ring
+        // slot but NOT this case -- the slot holds exactly `confirmed`, made from a predicted input.
+        const Frame min_received = _sync.GetMinReceivedFrame();
+        if (min_received != GameInput::NULL_FRAME && confirmed > min_received) {
+            confirmed = min_received;
+        }
+        // L4 (from PovertyCaster #231, hole 2): A PENDING ROLLBACK'S RE-SAVE HAS NOT RUN YET.
+        // HandleRollback (later in this poll) only QUEUES load/advance/save events; the app executes them
+        // after this poll returns. So _storage for [GetMinIncorrectFrame(), current) still holds the
+        // SPECULATIVE checksums right now, and attesting one would send a value the next rollback corrects.
+        // Defer -- _last_sent_healthcheck does not move, so next poll attests the same frame from the
+        // corrected save. (Upstream's reorder put this check before HandleRollback; that closes the
+        // executed-in-same-poll case but NOT this one, because the misprediction is already known from
+        // Poll() before the rollback is queued.)
+        if (RollbackPending()) {
+            const Frame incorrect = _sync.GetMinIncorrectFrame();
+            if (incorrect != GameInput::NULL_FRAME && confirmed >= incorrect) {
+                return;
+            }
+        }
+
         if (confirmed <= GameInput::NULL_FRAME) {
             return;
         }
