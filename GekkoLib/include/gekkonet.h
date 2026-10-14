@@ -78,6 +78,9 @@ typedef struct GekkoConfig {
     bool nonportable_saves;
 } GekkoConfig;
 
+// computes the checksum of a stored state (see gekko_set_checksum_callback).
+typedef unsigned int (*GekkoChecksumFn)(void* user, int frame, const unsigned char* state, unsigned int state_len);
+
 typedef enum GekkoPlayerType {
     GekkoLocalPlayer,
     GekkoRemotePlayer,
@@ -221,6 +224,11 @@ GEKKONET_API void gekko_set_disconnect_timeout(GekkoSession* session, unsigned i
 // holds a local players input back by the given amount of frames before the
 // session uses it, trading input lag for less mispredictions.
 GEKKONET_API void gekko_set_local_delay(GekkoSession* session, int player, unsigned char delay);
+
+// optional lazy checksum. when set, GekkoNet asks for a stored state's checksum only when it compares one (desync
+// detection reads one confirmed frame per frame) instead of using the value written by the save event, so rollback
+// re-simulation saves need not hash anything. call before the session starts advancing.
+GEKKONET_API void gekko_set_checksum_callback(GekkoSession* session, GekkoChecksumFn fn, void* user);
 
 // simulates the given amount of frames ahead every update and rewinds them
 // on the next one, which hides local input delay.
