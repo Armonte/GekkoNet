@@ -109,8 +109,8 @@ the retiring wanwan launcher calls them).
     byte-identical to L4). ymir's adapter calls it at 4 sites, so it is a LIVE dependency, not dead
     surface -- folded before the pin so one commit serves all four superprojects.
 
-14. **L5: PovertyCaster security hardening** (PovertyCaster `8f03840`, `c3905fb`, `c189245`; branch `l5-hardening`,
-    NOT yet tagged -- 2026-10-14, awaiting the user's OK to tag and repin).
+14. **L5: PovertyCaster security hardening** (PovertyCaster `8f03840`, `c3905fb`, `c189245`; tagged
+    **`fm2k-l5-pin-2026-10-14`**, the new canonical pin -- USER 2026-10-14 "we gotta have our security fixes").
     - `90593ae` zpp `alloc_limit` on every untrusted decode: packets 64 KiB, replays 64 MiB (zpp resizes a
       length-prefixed container BEFORE checking the bytes remaining). Kept upstream's versioned replay parse.
     - `fed7d26` packet decode hardening: hard datagram bounds before any allocation/copy (`MIN/MAX_PACKET_BYTES`),
@@ -123,3 +123,16 @@ the retiring wanwan launcher calls them).
     hardening (on its own fork pin `c189245e`) and was therefore already wire-incompatible with the L4 tag; L5 lets
     all four superprojects meet again, but they must move to it TOGETHER (one release window, and the launcher's
     version/compat check bumped).
+    - `84dd1e6` **L5b** PovertyCaster observability, no wire change: `gekko_health_stats` (#233: compares
+      matched / mismatched / abstained -- a verdict's real coverage count) and `gekko_attest_log` (#231 ring of the
+      last attestations with the sync state that allowed them), recorded on L4's attestation path; storage ring
+      default-init.
+    Verified (PovertyCaster on this commit, deps/gekkonet-l5 2c8bbc1af): ctest 470/470; PB2K1 two-process loopback
+    at 80,15,1: 4/4 rounds, 2 committed selects, 22,345/22,393 cross-peer checks agreed, 0 desync.
+    API: `GekkoConfig.input_prediction_window` is `max_input_prediction_window` since upstream 0d491a4 (not a
+    fork delta; PovertyCaster renamed its 3 uses).
+
+## The canonical pin (from 2026-10-14)
+
+**`fm2k-l5-pin-2026-10-14`** = `fm2k-l4-pin-2026-10-14` + entry 14. All four superprojects move to it TOGETHER, in
+one release window the user picks: an L5 peer cannot connect to an L4 peer (64-bit session magic).
