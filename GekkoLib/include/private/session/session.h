@@ -15,6 +15,9 @@ struct GekkoSession {
     virtual bool DisconnectActor(i32 actor) { return false; }
     virtual void SetDisconnectTimeout(u32 timeout) {}
     virtual void AddLocalInput(i32 player, void* input) {}
+    // [hinokakera] Queue a local input allowed to run up to `max_lead` frames ahead of the
+    // confirmed frame; false when the lead would be exceeded. Used by the forced-rollback harness.
+    virtual bool AddLocalInputAhead(i32 player, void* input, i32 max_lead) { return false; }
     // [hinokakera] Frames currently predicted beyond the last confirmed frame.
     virtual i32 PredictionDepth() { return 0; }
     // [PovertyCaster #83] Inputs discarded from the send queue that a connected peer had not acked.

@@ -83,6 +83,18 @@ typedef struct GekkoConfig {
     // indistinguishable from a real rollback to the game (same events); load
     // events carry `forced = true`. State storage is sized for it. 0 = off.
     unsigned char forced_rollback_depth;
+    // Hinokakera resilience extension (appended, as2 M3 model). Zero-initialize
+    // the whole struct; 0 selects the library default for each field.
+    // silence >= disconnect_timeout_ms raises GekkoPlayerDisconnected (default
+    // 5000). gekko_set_disconnect_timeout still overrides it after gekko_start
+    // (and 0 there still disables automatic disconnecting).
+    unsigned int disconnect_timeout_ms;
+    // silence >= interrupt_timeout_ms raises GekkoPlayerInterrupted once; the
+    // actor stays connected and resends continue; the first packet received
+    // afterwards raises GekkoPlayerResumed (default 3000).
+    unsigned int interrupt_timeout_ms;
+    // resend interval for unacknowledged inputs and spectator states (default 200).
+    unsigned int input_retry_ms;
 } GekkoConfig;
 
 typedef enum GekkoPlayerType {
@@ -158,7 +170,10 @@ typedef enum GekkoSessionEventType {
     GekkoSpectatorUnpaused,
     GekkoDesyncDetected,
     GekkoReplayFinished,
-    GekkoReplayDesync
+    GekkoReplayDesync,
+    // Hinokakera resilience extension: appended, existing values keep their numbers.
+    GekkoPlayerInterrupted, // = 8: silence >= interrupt_timeout_ms, the actor is still connected
+    GekkoPlayerResumed      // = 9: a packet arrived from an interrupted actor
 } GekkoSessionEventType;
 
 typedef struct GekkoSessionEvent {
@@ -187,6 +202,13 @@ typedef struct GekkoSessionEvent {
             unsigned int checksum;
             unsigned int recorded_checksum;
         } replay_desynced;
+        // Hinokakera resilience extension: GekkoPlayerInterrupted / GekkoPlayerResumed.
+        struct GekkoInterrupted {
+            int handle;
+        } interrupted;
+        struct GekkoResumed {
+            int handle;
+        } resumed;
     } data;
 } GekkoSessionEvent;
 
@@ -254,6 +276,22 @@ GEKKONET_API void gekko_add_local_input(GekkoSession* session, int player, void*
 // game session is stalled at its prediction limit. 0 before the session started, without
 // remote players, and for every session type other than a game session.
 GEKKONET_API int gekko_prediction_depth(GekkoSession* session);
+
+// Hinokakera resilience extension: hands the next local input to a game session, also
+// while the session is stalled, so the remote peer keeps receiving inputs and never
+// starves on our stall. Call it once per tick with a fresh sample instead of
+// gekko_add_local_input. The input lands on the frame after the last input the player
+// produced:
+//  - up to (current frame + local delay), the regular slot, it is accepted like
+//    gekko_add_local_input would (the first input also fills the delay prefix);
+//  - beyond that it is accepted only while the session is stalled on remote input
+//    (gekko_prediction_depth >= input_prediction_window) and only up to max_lead frames
+//    past the current frame (the frame the next advance simulates), where max_lead is
+//    clamped to [0, 30]. The lead includes the local delay.
+// Returns false when the input was refused (not a local player, not stalled, cap reached).
+// Once the session advances again, calls are refused until the lead shrank back to the
+// local delay, so a stall never leaves extra input latency behind.
+GEKKONET_API bool gekko_add_local_input_ahead(GekkoSession* session, int player, void* input, int max_lead);
 
 // advances the session and returns the events the game has to handle in order.
 GEKKONET_API GekkoGameEvent** gekko_update_session(GekkoSession* session, int* count);

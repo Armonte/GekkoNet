@@ -91,6 +91,11 @@ namespace Gekko {
 
         void AddPlayerDisconnectedEvent(Handle handle);
 
+        // Hinokakera resilience patch: interrupted / resumed liveness events.
+        void AddPlayerInterruptedEvent(Handle handle);
+
+        void AddPlayerResumedEvent(Handle handle);
+
         void AddSessionStartedEvent();
 
         void AddSpectatorPausedEvent();

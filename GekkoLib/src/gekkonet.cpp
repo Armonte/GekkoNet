@@ -113,6 +113,12 @@ int gekko_prediction_depth(GekkoSession* session)
     return session ? session->PredictionDepth() : 0;
 }
 
+bool gekko_add_local_input_ahead(GekkoSession* session, int player, void* input, int max_lead)
+{
+    return session ? session->AddLocalInputAhead(player, input, max_lead) : false;
+}
+
+
 GekkoGameEvent** gekko_update_session(GekkoSession* session, int* count)
 {
     return session->UpdateSession(count);
