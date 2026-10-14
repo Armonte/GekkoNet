@@ -84,3 +84,20 @@ harness to upstream frames-ahead; split and gate before pinning.
     - `MAX_INPUT_QUEUE_SIZE` 128 -> 1800 and the matching assert (long-interruption resend window).
     Verified no-op at defaults: the L3b default-config stress run is BYTE-IDENTICAL to the L3a build
     (0 desyncs, 23,937 re-sim frames); rollback self-test 87 checks / 0 diffs.
+
+11. **L4: health-attestation fix** (`game_session.cpp`; PovertyCaster #231, hole 1+2). `SendSessionHealthCheck`
+    attested `current - prediction_window - 1` with no check that the inputs were received; under jitter/loss a
+    remote input can arrive later than the window, so a save made from a PREDICTED input gets attested as
+    confirmed and two healthy peers tear down over a nonexistent desync. Cap at `GetMinReceivedFrame()`, and
+    defer one poll when `RollbackPending()` (the patch-4 ring-slot check does not cover this).
+
+12. **L4: arrival-sampled frame advantage** (`game_session.cpp`; PovertyCaster `2d48b3b`). The local advantage
+    is sampled at packet arrival like the peer's term, removing the common-mode +FA bias that slowed both frame
+    clocks. Upstream-aligned; supersedes wanwan Candidate D.
+
+## The canonical pin
+
+`fm2k` = upstream `0d491a4` + the above, tagged **`fm2k-l4-pin-2026-10-14`**. All four superprojects (the FM2K
+port, PovertyCaster, ymir, and wanwan's replacement) pin this commit so the wire format is identical and the
+playerbase stays one. Deliberately NOT carried: wanwan's `gekko_wire_stats()`/`gekko_ack_guard_stats()` (only
+the retiring wanwan launcher calls them).
