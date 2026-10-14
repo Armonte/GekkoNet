@@ -70,3 +70,17 @@ harness to upstream frames-ahead; split and gate before pinning.
    upstream frames-ahead. Public delta: 2 symbols -- the rest of `a5d9181`'s Aquat1c bundle (liveness
    timeouts, Interrupted/Resumed, `gekko_add_local_input_ahead`, the 128->1800 queue bump) is deferred to
    L3b and has no consumer on the chain today.
+
+10. **L3b: opt-in liveness timeouts, `Interrupted`/`Resumed`, `gekko_add_local_input_ahead`** (the rest of
+    PC `a5d9181`). All OPT-IN, so a default session is byte-identical to L3a/upstream:
+    - `GekkoConfig::disconnect_timeout_ms` / `input_retry_ms` (0 = library default) and
+      `interrupt_timeout_ms` (0 = OFF). `HandleTooFarBehindActors` keeps the early return and the `>`
+      comparison; the interrupt/disconnect branch runs only when `interrupt_timeout_ms > 0`. New public
+      session events `GekkoPlayerInterrupted` / `GekkoPlayerResumed`.
+    - `gekko_add_local_input_ahead` + `AddLocalInputAhead` + `AddLocalInputAt` + `IsStalledOnRemoteInput`:
+      forward local input while stalled on remote input, within `MAX_INPUT_AHEAD_LEAD`, so a stalled peer
+      keeps feeding its opponent. `SendLocalInputs` scans the lead slots but still stops at the first
+      missing input, so it is wire-identical unless `gekko_add_local_input_ahead` was actually called.
+    - `MAX_INPUT_QUEUE_SIZE` 128 -> 1800 and the matching assert (long-interruption resend window).
+    Verified no-op at defaults: the L3b default-config stress run is BYTE-IDENTICAL to the L3a build
+    (0 desyncs, 23,937 re-sim frames); rollback self-test 87 checks / 0 diffs.
