@@ -39,3 +39,24 @@ Convergence target and verification: `fm2k-port/docs/GEKKONET_AUDIT.md`.
    back continuously. Before the start `AllActorsValid()` already drives the handshake; late spectators
    need the per-poll handshake only once running. Measured on the fm2k-port 2-peer loopback as a
    persistent one-sided asymmetry (one peer ~222 rollbacks, the other 0); guard removes it.
+
+Also on `fm2k` (canonical convergence, 2026-10-14; ymir fork supplies the middle layer):
+
+6. **`GekkoConfig::nonportable_saves`** (`gekkonet.h`, `game_session.cpp`; ymir `8285ff5`): a session whose
+   save event hands out a process-local buffer (a work-RAM delta against a local base) cannot serve a late
+   spectator from the rollback storage. With the flag set, `PrepareSpectatorStates` uses only the on-demand
+   state captured with `portable = true`.
+7. **Capture late spectator states from the frame before the confirmed one** (`game_session.cpp`; ymir
+   `932a4e3`): without limited saving the latest save is already past the confirmed frame, so
+   `CaptureSpectatorState` returned without capturing; re-simulate from the stored frame just before the
+   confirmed one and capture the portable state there.
+8. **Input: bridge a local-input gap instead of wedging** (`input.cpp`, `backend.*`, `gekkonet.*`; PC
+   `bef8a8b`): `AddLocalInput` can only write at `frame + _input_delay` and `AddInput` accepts only
+   `_last_received_input + 1`, so a local buffer one frame behind the session wedges forever (every later
+   push dropped). Fill the gap with the last input, unconditionally. Plus `gekko_stall_info` and
+   `discarded_unacked` diagnostics.
+
+Not yet folded (L3, PC `a5d9181`): the Aquat1c bundle -- `forced_rollback_depth`, `gekko_prediction_depth`,
+`gekko_add_local_input_ahead`, disconnect/interrupt/input-retry timeouts, new event enum values. It is 393
+lines across 14 files and its storage sizing (`max(prediction_window, forced_depth)`) couples the forced
+harness to upstream frames-ahead; split and gate before pinning.
