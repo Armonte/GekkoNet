@@ -76,6 +76,11 @@ void gekko_set_local_delay(GekkoSession* session, int player, unsigned char dela
     session->SetLocalDelay(player, delay);
 }
 
+void gekko_set_forced_rollback(GekkoSession* session, unsigned char depth)
+{
+    session->SetForcedRollback(depth);
+}
+
 void gekko_set_runahead(GekkoSession* session, unsigned char runahead)
 {
     session->SetRunahead(runahead);
@@ -101,6 +106,11 @@ unsigned gekko_discarded_unacked(GekkoSession* session)
 void gekko_add_local_input(GekkoSession* session, int player, void* input)
 {
     session->AddLocalInput(player, input);
+}
+
+int gekko_prediction_depth(GekkoSession* session)
+{
+    return session ? session->PredictionDepth() : 0;
 }
 
 GekkoGameEvent** gekko_update_session(GekkoSession* session, int* count)

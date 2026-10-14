@@ -76,6 +76,13 @@ typedef struct GekkoConfig {
     // delta against local data). late spectators then always receive a state captured with portable = true,
     // never one taken from the rollback storage.
     bool nonportable_saves;
+    // Hinokakera harness extension: > 0 makes a game session synthesize a
+    // rollback transaction of this depth on EVERY advanced frame (load the
+    // state from `depth` frames back, replay those frames with the inputs on
+    // record, re-save each one) after any real correction. The transaction is
+    // indistinguishable from a real rollback to the game (same events); load
+    // events carry `forced = true`. State storage is sized for it. 0 = off.
+    unsigned char forced_rollback_depth;
 } GekkoConfig;
 
 typedef enum GekkoPlayerType {
@@ -136,6 +143,7 @@ typedef struct GekkoGameEvent {
             int frame;
             unsigned int state_len;
             unsigned char* state;
+            bool forced;   // synthesized by forced_rollback_depth, not a correction
         } load;
     } data;
 } GekkoGameEvent;
@@ -222,6 +230,11 @@ GEKKONET_API void gekko_set_disconnect_timeout(GekkoSession* session, unsigned i
 // session uses it, trading input lag for less mispredictions.
 GEKKONET_API void gekko_set_local_delay(GekkoSession* session, int player, unsigned char delay);
 
+// Hinokakera harness extension: change the per-frame forced rollback depth of a
+// game session at runtime (clamped to what the state storage created from
+// GekkoConfig::forced_rollback_depth can hold; 0 = off).
+GEKKONET_API void gekko_set_forced_rollback(GekkoSession* session, unsigned char depth);
+
 // simulates the given amount of frames ahead every update and rewinds them
 // on the next one, which hides local input delay.
 GEKKONET_API void gekko_set_runahead(GekkoSession* session, unsigned char runahead);
@@ -234,6 +247,13 @@ GEKKONET_API void gekko_set_input_prediction_window(GekkoSession* session, unsig
 
 // hands the input of a local player to the session, once per player per frame.
 GEKKONET_API void gekko_add_local_input(GekkoSession* session, int player, void* input);
+
+// Hinokakera resilience extension: the number of simulated frames that still rest on
+// predicted remote input, (last simulated frame) - (lowest frame for which every remote
+// input is confirmed), never below 0. It equals input_prediction_window exactly when a
+// game session is stalled at its prediction limit. 0 before the session started, without
+// remote players, and for every session type other than a game session.
+GEKKONET_API int gekko_prediction_depth(GekkoSession* session);
 
 // advances the session and returns the events the game has to handle in order.
 GEKKONET_API GekkoGameEvent** gekko_update_session(GekkoSession* session, int* count);

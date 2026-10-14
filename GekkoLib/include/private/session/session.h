@@ -7,6 +7,7 @@
 struct GekkoSession {
     virtual void Init(GekkoConfig* config) = 0;
     virtual void SetLocalDelay(i32 player, u8 delay) {}
+    virtual void SetForcedRollback(u8 depth) {}
     virtual void SetRunahead(u8 runahead) {}
     virtual void SetInputPredictionWindow(u8 window) {}
     virtual void SetNetAdapter(GekkoNetAdapter* adapter) {}
@@ -14,6 +15,8 @@ struct GekkoSession {
     virtual bool DisconnectActor(i32 actor) { return false; }
     virtual void SetDisconnectTimeout(u32 timeout) {}
     virtual void AddLocalInput(i32 player, void* input) {}
+    // [hinokakera] Frames currently predicted beyond the last confirmed frame.
+    virtual i32 PredictionDepth() { return 0; }
     // [PovertyCaster #83] Inputs discarded from the send queue that a connected peer had not acked.
     // Default 0 for session kinds with no remote send queue (stress); GameSession overrides.
     virtual unsigned DiscardedUnacked() { return 0; }
