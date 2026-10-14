@@ -20,6 +20,7 @@ namespace Gekko {
         GekkoGameEvent** UpdateSession(i32* count) override;
 
         GekkoSessionEvent** Events(i32* count) override;
+        bool HealthStats(GekkoHealthStats* stats) override;   // [PovertyCaster #233]
 
         bool LoadReplay(const u8* replay_data, u32 length) override;
 

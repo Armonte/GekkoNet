@@ -31,6 +31,7 @@ namespace Gekko {
         i32 ConfirmedFrame() override;
 
         GekkoSessionEvent** Events(i32* count) override;
+        bool HealthStats(GekkoHealthStats* stats) override;   // [PovertyCaster #233]
 
         bool StartRecording(bool save_initial_state, bool disable_compression) override;
 
