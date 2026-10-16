@@ -35,6 +35,7 @@ namespace Gekko {
 
         void AddLocalInput(i32 player, void* input) override;
         unsigned DiscardedUnacked() override { return _msg.DiscardedUnacked(); }
+        int RemoteAckedFrame() override { return _msg.RemoteAckedFrame(); }
         int StallInfo(int* out, int max) override {
             if (!out || max < 1) return 0;
             int n = 0;

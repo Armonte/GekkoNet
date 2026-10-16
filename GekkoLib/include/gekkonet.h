@@ -327,6 +327,13 @@ GEKKONET_API void gekko_network_stats(GekkoSession* session, int player, GekkoNe
 // recover on its own. Monotonic for the life of the session.
 GEKKONET_API unsigned gekko_discarded_unacked(GekkoSession* session);
 
+// The newest frame of local input that EVERY connected remote player has acknowledged (INT_MAX when no remote player is
+// connected). A peer leaving a match polls the network until this covers the frame it leaves on before destroying its
+// session: the remote may still be predicting the last frames and can only end the match on the same confirmed frame once
+// it has them. (Waiting for "nothing unacked" instead would also wait for inputs queued past the end, which a peer that
+// already left never acknowledges.)
+GEKKONET_API int gekko_remote_acked_frame(GekkoSession* session);
+
 // [PovertyCaster #83] THE ADVANCE GATE'S OWN STATE, for a session that has stopped advancing.
 // GetCurrentInputs() returns false -- and no AdvanceEvent is produced -- when ANY player's input buffer
 // has nothing at the session's current frame. `out[0]` is that current frame; out[1..N] are each player's

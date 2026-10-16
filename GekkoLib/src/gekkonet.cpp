@@ -109,6 +109,11 @@ unsigned gekko_discarded_unacked(GekkoSession* session)
     return session ? session->DiscardedUnacked() : 0u;
 }
 
+int gekko_remote_acked_frame(GekkoSession* session)
+{
+    return session ? session->RemoteAckedFrame() : INT_MAX;
+}
+
 void gekko_add_local_input(GekkoSession* session, int player, void* input)
 {
     session->AddLocalInput(player, input);

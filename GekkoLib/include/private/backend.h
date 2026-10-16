@@ -160,6 +160,7 @@ namespace Gekko {
 		// summed over every local player's send queue. Nonzero == a peer is permanently unserviceable.
 
 		u32 DiscardedUnacked();
+		i32 RemoteAckedFrame();
 
 
 		void SendInputAck(Handle player, Frame frame, i8 local_advantage);

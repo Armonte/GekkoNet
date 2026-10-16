@@ -1,3 +1,4 @@
+#include <chrono>
 #include "backend.h"
 
 #include <cassert>
@@ -17,9 +18,14 @@ Gekko::MessageSystem::MessageSystem()
     _interrupt_timeout = NetStats::INTERRUPT_TIMEOUT;
     _input_retry_interval = NetStats::INPUT_RETRY_INTERVAL;
 
-	// gen magic for session
-	std::srand((unsigned int)std::time(nullptr));
-	_session_magic = std::rand();
+	// gen magic for session. Seeding from time() alone gave two sessions created within the same second the same magic, so a
+	// stale session could not be told from its successor; 0 means "unset" everywhere, so never use it.
+	{
+		const u64 t = (u64)std::chrono::high_resolution_clock::now().time_since_epoch().count();
+		u32 m = (u32)(t ^ (t >> 16) ^ (t >> 32) ^ (u32)(uintptr_t)this);
+		_session_magic = (u16)(m ^ (m >> 16));
+		if (_session_magic == 0) _session_magic = 1;
+	}
 
     session_events = SessionEventSystem();
 }
@@ -306,6 +312,12 @@ void Gekko::MessageSystem::SendPendingDisconnects()
             ++iter;
         }
     }
+}
+
+i32 Gekko::MessageSystem::RemoteAckedFrame()
+{
+    const Frame acked = GetMinLastAckedFrame(false);
+    return acked == INT_MAX ? INT_MAX : acked; // INT_MAX: no connected remote, nothing to wait for
 }
 
 u32 Gekko::MessageSystem::DiscardedUnacked()
@@ -966,6 +978,15 @@ void Gekko::MessageSystem::OnSyncRequest(NetAddress& addr, NetPacket& pkt)
 
         for (auto& player : *current) {
             if (player->address.Equals(addr)) {
+                // A peer we are CONNECTED to that asks to sync with a different magic has started a new session (next match,
+                // restart). Re-syncing would hand this old session the new session's packets: the peer's new inputs land in
+                // the old match as if they continued it. End the old session with a disconnect instead and do not answer;
+                // the peer keeps asking until a new local session exists.
+                if (player->GetStatus() == Connected && player->session_magic != body->rng_data) {
+                    MarkActorDisconnected(player.get());
+                    continue;
+                }
+                if (player->GetStatus() == Disconnected) continue;
                 player->session_magic = body->rng_data;
                 if (player->sync_num == 0) {
                     player->stats.last_sent_sync_message = now;

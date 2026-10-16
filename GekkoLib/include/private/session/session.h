@@ -3,6 +3,8 @@
 #include "gekkonet.h"
 #include "gekko_types.h"
 
+#include <climits>
+
 // define GekkoSession internally
 struct GekkoSession {
     virtual void Init(GekkoConfig* config) = 0;
@@ -22,6 +24,7 @@ struct GekkoSession {
     // [PovertyCaster #83] Inputs discarded from the send queue that a connected peer had not acked.
     // Default 0 for session kinds with no remote send queue (stress); GameSession overrides.
     virtual unsigned DiscardedUnacked() { return 0; }
+    virtual int RemoteAckedFrame() { return INT_MAX; }
     // [PovertyCaster #83] Fill `out` with the advance gate's own state: [0]=current frame, then one
     // last-received frame per player. Returns the count written. THE question at a stall is which player's
     // buffer is short, and nothing exposed it.
