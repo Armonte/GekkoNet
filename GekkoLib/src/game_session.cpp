@@ -764,7 +764,13 @@ void Gekko::GameSession::CaptureSpectatorState()
     // A rollback session may be ahead of its confirmed frame. Re-simulate from
     // its latest persistent save, capture the confirmed state along the way,
     // and finish back at the state where this update started.
-    const Frame sync_frame = _last_saved_frame;
+    // spectator_portable_only: stored states are not portable, so the confirmed state must ALWAYS come from a
+    // re-simulation. With full saving the latest save is newer than the confirmed frame; start one frame before it.
+    const bool portable_only = _config.spectator_portable_only != 0;
+    Frame sync_frame = _last_saved_frame;
+    if (portable_only && sync_frame >= state_frame) {
+        sync_frame = state_frame - 1;
+    }
     if (sync_frame >= state_frame) {
         return;
     }
@@ -782,6 +788,11 @@ void Gekko::GameSession::CaptureSpectatorState()
         _game_events.AddAdvanceEvent(_sync, true);
         if (frame == state_frame) {
             _game_events.AddStateSaveEvent(frame, &_spectator_state, true);
+        }
+        // An app that keeps its own state store in step with save/load (tokens) needs every re-simulated frame
+        // re-saved, exactly as a rollback does; the portable capture alone would leave its store behind.
+        if (portable_only && !_config.limited_saving) {
+            _game_events.AddSaveEvent(_sync, _storage, nullptr);
         }
         _sync.IncrementFrame();
     }
