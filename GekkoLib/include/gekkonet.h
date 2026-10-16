@@ -94,7 +94,7 @@ typedef struct GekkoConfig {
     // Late spectators: when nonzero, only states saved by a PORTABLE save event (data.save.portable) are sent to a
     // spectator. For an app whose ordinary saves are not self-contained (e.g. a token into its own state store),
     // a stored state must never be shipped. 0 = previous behaviour (any stored state qualifies).
-    unsigned char spectator_portable_only;
+    unsigned char spectator_portable_only;   // appended: ZERO-INITIALISE the whole GekkoConfig (e.g. `GekkoConfig c{};` / memset of sizeof) -- a partial memset leaves this field undefined
 } GekkoConfig;
 
 typedef enum GekkoPlayerType {
