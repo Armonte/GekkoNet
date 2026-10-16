@@ -316,9 +316,13 @@ void Gekko::MessageSystem::SendPendingDisconnects()
 
 i32 Gekko::MessageSystem::RemoteAckedFrame()
 {
-    // players and spectators: a spectator short of the last confirmed inputs cannot reach the end of the match either.
-    // INT_MAX: nobody connected, nothing to wait for.
-    return std::min(GetMinLastAckedFrame(false), GetMinLastAckedFrame(true));
+    // Players and spectators: a spectator short of the last confirmed inputs cannot reach the end of the match either. A
+    // spectator only ever receives CONFIRMED frames, so it is current once it acknowledged everything queued for it (it can
+    // never acknowledge a frame that is still predicted here). INT_MAX: nobody connected, nothing to wait for.
+    Frame acked = GetMinLastAckedFrame(false);
+    const Frame spec = GetMinLastAckedFrame(true);
+    if (spec < _net_spectator_queue.last_added_input) acked = std::min(acked, spec);
+    return acked;
 }
 
 u32 Gekko::MessageSystem::DiscardedUnacked()
