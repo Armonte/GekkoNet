@@ -12,6 +12,7 @@ namespace Gekko {
 		std::unique_ptr<u8[]> state;
 		u32 state_len = 0;
 		u32 checksum = 0;
+		bool portable = false;   // written by a save event raised with portable = true (a self-contained state)
 	};
 
 	class StateStorage {

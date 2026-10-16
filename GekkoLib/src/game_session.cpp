@@ -695,7 +695,8 @@ void Gekko::GameSession::PrepareSpectatorStates()
         for (Frame frame = state_frame; frame >= oldest_state; frame--) {
             auto candidate = _storage.GetState(frame);
             if (candidate->frame == frame && candidate->state_len > 0 &&
-                candidate->state_len <= _config.state_size) {
+                candidate->state_len <= _config.state_size &&
+                (!_config.spectator_portable_only || candidate->portable)) {
                 state_frame = frame;
                 state = candidate;
                 break;

@@ -241,6 +241,7 @@ void Gekko::GameEventSystem::AddLoadEvent(SyncSystem& sync, StateStorage& storag
 void Gekko::GameEventSystem::AddStateSaveEvent(Frame frame, StateEntry* state, bool portable)
 {
     state->frame = frame;
+    state->portable = portable;
 
     _current_events.push_back(_event_buffer.GetEvent(false));
 
