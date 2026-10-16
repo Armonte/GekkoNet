@@ -316,8 +316,9 @@ void Gekko::MessageSystem::SendPendingDisconnects()
 
 i32 Gekko::MessageSystem::RemoteAckedFrame()
 {
-    const Frame acked = GetMinLastAckedFrame(false);
-    return acked == INT_MAX ? INT_MAX : acked; // INT_MAX: no connected remote, nothing to wait for
+    // players and spectators: a spectator short of the last confirmed inputs cannot reach the end of the match either.
+    // INT_MAX: nobody connected, nothing to wait for.
+    return std::min(GetMinLastAckedFrame(false), GetMinLastAckedFrame(true));
 }
 
 u32 Gekko::MessageSystem::DiscardedUnacked()

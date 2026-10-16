@@ -327,7 +327,7 @@ GEKKONET_API void gekko_network_stats(GekkoSession* session, int player, GekkoNe
 // recover on its own. Monotonic for the life of the session.
 GEKKONET_API unsigned gekko_discarded_unacked(GekkoSession* session);
 
-// The newest frame of local input that EVERY connected remote player has acknowledged (INT_MAX when no remote player is
+// The newest frame of input that EVERY connected remote player and spectator has acknowledged (INT_MAX when nobody is
 // connected). A peer leaving a match polls the network until this covers the frame it leaves on before destroying its
 // session: the remote may still be predicting the last frames and can only end the match on the same confirmed frame once
 // it has them. (Waiting for "nothing unacked" instead would also wait for inputs queued past the end, which a peer that
