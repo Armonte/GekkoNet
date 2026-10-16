@@ -135,6 +135,7 @@ namespace Gekko {
 	class MessageSystem {
 	public:
 		MessageSystem();
+		~MessageSystem();
 
 		void Init(
             u8 num_players,

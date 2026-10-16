@@ -1,4 +1,6 @@
 #include <chrono>
+#include <mutex>
+#include <vector>
 #include "backend.h"
 
 #include <cassert>
@@ -6,6 +8,49 @@
 #include <cstring>
 
 #include "zpp/zpp_bits.h"
+
+// Magics of remote sessions that ended (by address), process-wide, so a late sync packet from a peer's OLD session cannot
+// sync with our NEXT session (which would take the old magic and talk to a session that no longer exists). Entries expire
+// after RETIRED_TTL_MS: magics are only 16 bits, and a peer's new session that happened to draw its retired magic must still
+// be able to connect.
+namespace {
+    struct RetiredMagic { std::vector<u8> addr; u16 magic = 0; u64 when = 0; };
+    constexpr u32 RETIRED_SLOTS = 16;
+    constexpr u64 RETIRED_TTL_MS = 30000;
+    RetiredMagic g_retired[RETIRED_SLOTS];
+    u32 g_retired_next = 0;
+    std::mutex g_retired_mtx;
+
+    u64 SteadyMs() {
+        return (u64)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+
+    void RetireMagic(Gekko::NetAddress& addr, u16 magic) {
+        if (magic == 0 || addr.GetSize() == 0) return;
+        std::lock_guard<std::mutex> lk(g_retired_mtx);
+        auto& r = g_retired[g_retired_next++ % RETIRED_SLOTS];
+        r.addr.assign(addr.GetAddress(), addr.GetAddress() + addr.GetSize());
+        r.magic = magic;
+        r.when = SteadyMs();
+    }
+
+    bool IsRetiredMagic(Gekko::NetAddress& addr, u16 magic) {
+        const u64 now = SteadyMs();
+        std::lock_guard<std::mutex> lk(g_retired_mtx);
+        for (auto& r : g_retired) {
+            if (r.magic != magic || now - r.when > RETIRED_TTL_MS || r.addr.size() != addr.GetSize()) continue;
+            if (std::memcmp(r.addr.data(), addr.GetAddress(), r.addr.size()) == 0) return true;
+        }
+        return false;
+    }
+}
+
+Gekko::MessageSystem::~MessageSystem()
+{
+    for (auto* list : { &remotes, &spectators })
+        for (auto& actor : *list)
+            RetireMagic(actor->address, actor->session_magic);
+}
 
 Gekko::MessageSystem::MessageSystem()
 {
@@ -988,10 +1033,16 @@ void Gekko::MessageSystem::OnSyncRequest(NetAddress& addr, NetPacket& pkt)
                 // the old match as if they continued it. End the old session with a disconnect instead and do not answer;
                 // the peer keeps asking until a new local session exists.
                 if (player->GetStatus() == Connected && player->session_magic != body->rng_data) {
+                    RetireMagic(player->address, player->session_magic);
                     MarkActorDisconnected(player.get());
                     continue;
                 }
+                // A disconnect is final for that remote within this session (GekkoNet has no reconnect path; interrupt
+                // recovery covers only Connected remotes that went quiet). The peer reaches us again in our next session.
                 if (player->GetStatus() == Disconnected) continue;
+                // The reverse race: a late request from the peer's PREVIOUS session reaching this new session while the
+                // remote is still syncing would set the dead session's magic.
+                if (IsRetiredMagic(addr, body->rng_data)) continue;
                 player->session_magic = body->rng_data;
                 if (player->sync_num == 0) {
                     player->stats.last_sent_sync_message = now;
