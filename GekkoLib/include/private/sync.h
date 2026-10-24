@@ -15,9 +15,6 @@ namespace Gekko {
 
 		void AddLocalInput(Handle player, u8* input);
 
-		// Hinokakera resilience patch: local input at an explicit frame (sequential only).
-		void AddLocalInputAt(Handle player, u8* input, Frame frame);
-
 		void AddRemoteInput(Handle player, u8* input, Frame frame);
 
 		void OverwriteInput(Handle player, u8* input, Frame frame);

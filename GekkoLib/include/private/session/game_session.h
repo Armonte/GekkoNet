@@ -46,14 +46,9 @@ namespace Gekko {
             return n;
         }
 
-        // Hinokakera resilience patch: see gekko_add_local_input_ahead / gekko_prediction_depth.
-        bool AddLocalInputAhead(i32 player, void* input, i32 max_lead) override;
-
+        // Hinokakera resilience patch: see gekko_prediction_depth.
         i32 PredictionDepth() override;
 
-        // hard cap on how far past the current frame local input may be produced
-        // (keeps both peers inside the input ring for windows up to 32).
-        static const i32 MAX_INPUT_AHEAD_LEAD = 30;
 
         GekkoGameEvent** UpdateSession(i32* count) override;
 
@@ -137,7 +132,6 @@ namespace Gekko {
 
         Frame RemotePredictionDepth();
 
-        bool IsStalledOnRemoteInput();
 
         void SendSessionHealthCheck();
 

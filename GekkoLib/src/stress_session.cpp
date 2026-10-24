@@ -206,18 +206,15 @@ void Gekko::StressSession::CheckForDesyncs(Frame check_frame)
     const StateEntry* state = _storage.GetState(check_frame);
     // check if there is a valid entry in the state storage
     if (state->frame == check_frame) {
-        const u32 checksum = checksum_fn
-            ? checksum_fn(checksum_user, check_frame, state->state.get(), state->state_len)
-            : state->checksum;
         if (_checksum_history.count(check_frame)) {
             // found in the history! compare checksums and send event if incorrect.
             u32 recorded_checksum = _checksum_history[check_frame];
-            if (checksum != recorded_checksum) {
-                _session_events.AddDesyncDetectedEvent(check_frame, 0, checksum, recorded_checksum);
+            if (state->checksum != recorded_checksum) {
+                _session_events.AddDesyncDetectedEvent(check_frame, 0, state->checksum, recorded_checksum);
             }
         } else {
             // not in the history? then add it.
-            _checksum_history.emplace(check_frame, checksum);
+            _checksum_history.emplace(check_frame, state->checksum);
         }
     } 
 }

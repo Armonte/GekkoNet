@@ -41,9 +41,7 @@ void Gekko::GameSession::Init(GekkoConfig* config)
     _sync.Init(_config.num_players, _config.input_size);
 
     // setup message system.
-    // Hinokakera resilience patch: plumb the configured liveness timeouts (0 = defaults).
-    _msg.Init(_config.num_players, _config.input_size, _config.state_size, false,
-        _config.disconnect_timeout_ms, _config.interrupt_timeout_ms, _config.input_retry_ms);
+    _msg.Init(_config.num_players, _config.input_size, _config.state_size, false);
 
     // setup game event system
     _game_events.Init(_config.input_size * _config.num_players);
@@ -205,56 +203,6 @@ void Gekko::GameSession::AddLocalInput(i32 player, void* input)
     }
 }
 
-bool Gekko::GameSession::AddLocalInputAhead(i32 player, void* input, i32 max_lead)
-{
-    // Hinokakera resilience patch: input production that survives a stalled simulation.
-    if (!input) {
-        return false;
-    }
-
-    bool is_local = false;
-    for (auto& local : _msg.locals) {
-        if (local->handle == player) {
-            is_local = true;
-            break;
-        }
-    }
-
-    if (!is_local) {
-        return false;
-    }
-
-    u8* inp = (u8*)input;
-    const Frame before = _sync.GetLastReceivedFrom(player);
-
-    // nothing produced yet: the regular path also fills the delay prefix.
-    if (before == GameInput::NULL_FRAME) {
-        _sync.AddLocalInput(player, inp);
-        return _sync.GetLastReceivedFrom(player) != before;
-    }
-
-    const Frame current = _sync.GetCurrentFrame();
-    const Frame regular = current + (Frame)_sync.GetLocalDelay(player);
-    const Frame target = before + 1;
-
-    // beyond the regular slot only while stalled on remote input and within the lead cap.
-    if (target > regular) {
-        if (!IsStalledOnRemoteInput()) {
-            return false;
-        }
-
-        Frame lead = max_lead < 0 ? 0 : (Frame)max_lead;
-        lead = std::min(lead, (Frame)MAX_INPUT_AHEAD_LEAD);
-
-        if (target > current + lead) {
-            return false;
-        }
-    }
-
-    _sync.AddLocalInputAt(player, inp, target);
-    return _sync.GetLastReceivedFrom(player) == target;
-}
-
 i32 Gekko::GameSession::PredictionDepth()
 {
     // Hinokakera resilience patch: simulated frames resting on predicted remote input.
@@ -277,16 +225,6 @@ Frame Gekko::GameSession::RemotePredictionDepth()
     return (_sync.GetCurrentFrame() - 1) - min_received;
 }
 
-bool Gekko::GameSession::IsStalledOnRemoteInput()
-{
-    // the next frame can neither use a received remote input nor predict one:
-    // the prediction window is used up (lockstep: the remote input is missing).
-    if (!_started || _msg.remotes.empty()) {
-        return false;
-    }
-
-    return RemotePredictionDepth() >= (Frame)_config.max_input_prediction_window;
-}
 
 GekkoGameEvent** Gekko::GameSession::UpdateSession(i32* count)
 {
@@ -666,11 +604,7 @@ void Gekko::GameSession::SendSessionHealthCheck()
             return;
         }
 
-        // Lazy checksum: route the stored state's checksum through the optional callback (null = the
-        // value written by the save event, i.e. behavior-free by default).
-        checksum = checksum_fn
-            ? checksum_fn(checksum_user, confirmed, sav->state.get(), sav->state_len)
-            : sav->checksum;
+        checksum = sav->checksum;
     }
 
     _last_sent_healthcheck = confirmed;
@@ -874,7 +808,7 @@ void Gekko::GameSession::PrepareSpectatorStates()
             : std::max((Frame)-1, state_frame - (Frame)_config.max_input_prediction_window - 1);
 
         StateEntry* state = nullptr;
-        for (Frame frame = state_frame; !_config.nonportable_saves && frame >= oldest_state; frame--) {
+        for (Frame frame = state_frame; frame >= oldest_state; frame--) {
             auto candidate = _storage.GetState(frame);
             if (candidate->frame == frame && candidate->state_len > 0 &&
                 candidate->state_len <= _config.state_size) {
@@ -945,13 +879,8 @@ void Gekko::GameSession::CaptureSpectatorState()
     // A rollback session may be ahead of its confirmed frame. Re-simulate from
     // its latest persistent save, capture the confirmed state along the way,
     // and finish back at the state where this update started.
-    // With limited saving the latest persistent save is the only one. Otherwise every recent frame is stored
-    // and the latest save is already past the confirmed frame, so start from the frame just before it --
-    // needed when the stored states themselves are not portable.
-    const Frame sync_frame = (_config.nonportable_saves && !_config.limited_saving)
-        ? state_frame - 1
-        : _last_saved_frame;
-    if (sync_frame >= state_frame || sync_frame < 0) {
+    const Frame sync_frame = _last_saved_frame;
+    if (sync_frame >= state_frame) {
         return;
     }
 
@@ -1173,9 +1102,9 @@ void Gekko::GameSession::HandleReceivedInputs()
             const Frame last_recv = _sync.GetLastReceivedFrom(handle) + 1;
             const Frame last_added = _msg.GetLastAddedInputFrom(handle);
 
-            // Hinokakera resilience patch: 128 -> 1800 to match MAX_INPUT_QUEUE_SIZE, a resume
-            // burst after a long interruption can deliver more than 128 frames in one poll.
-            assert(last_added - last_recv <= 1800); // more then 1800 frames behind sounds incorrect.
+            assert(last_added - last_recv <= 128); // more then 128 frames behind sounds incorrect.
+            // L3b (deferred): the Aquat1c patch bumps this 128 -> 1800 to match MAX_INPUT_QUEUE_SIZE,
+            // for a resume burst after a long interruption delivering more than 128 frames in one poll.
 
             auto& input_q = _msg.GetNetPlayerQueue(handle);
             const Frame min_frame = last_added - (i32)input_q.size() + 1;
@@ -1215,8 +1144,8 @@ void Gekko::GameSession::SendLocalInputs()
 
         auto input = std::make_unique<u8[]>(_config.input_size);
         // Hinokakera resilience patch: also forward inputs produced ahead of the regular
-        // slot (gekko_add_local_input_ahead); the loop still stops at the first missing input.
-        for (Frame frame = current; frame <= current + delay + MAX_INPUT_AHEAD_LEAD; frame++) {
+        // the loop stops at the first missing input.
+        for (Frame frame = current; frame <= current + delay; frame++) {
             for (auto& player : _msg.locals) {
                 if (!_sync.GetLocalInput(player->handle, input, frame)) {
                     return;

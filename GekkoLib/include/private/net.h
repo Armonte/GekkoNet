@@ -119,9 +119,6 @@ namespace Gekko {
     };
 
     struct NetStats {
-        // Hinokakera resilience patch: DISCONNECT_TIMEOUT and INPUT_RETRY_INTERVAL are the defaults; the
-        // effective values live on MessageSystem. GekkoConfig::disconnect_timeout_ms / input_retry_ms
-        // override them (0 = default); interrupt_timeout_ms is OFF at 0 (upstream has no interrupt state).
         static const u64 DISCONNECT_TIMEOUT = 5000;
         static const u64 DISCONNECT_MSG_DELAY = 200;
         static const u64 DISCONNECT_CLAIM_HOLD = 2000;

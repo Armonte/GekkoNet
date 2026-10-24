@@ -87,12 +87,6 @@ void gekko_set_forced_rollback(GekkoSession* session, unsigned char depth)
     session->SetForcedRollback(depth);
 }
 
-void gekko_set_checksum_callback(GekkoSession* session, GekkoChecksumFn fn, void* user)
-{
-    session->checksum_fn = fn;
-    session->checksum_user = user;
-}
-
 void gekko_set_runahead(GekkoSession* session, unsigned char runahead)
 {
     session->SetRunahead(runahead);
@@ -129,12 +123,6 @@ int gekko_prediction_depth(GekkoSession* session)
 {
     return session ? session->PredictionDepth() : 0;
 }
-
-bool gekko_add_local_input_ahead(GekkoSession* session, int player, void* input, int max_lead)
-{
-    return session ? session->AddLocalInputAhead(player, input, max_lead) : false;
-}
-
 
 GekkoGameEvent** gekko_update_session(GekkoSession* session, int* count)
 {
