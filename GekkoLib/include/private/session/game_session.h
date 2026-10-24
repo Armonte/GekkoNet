@@ -66,6 +66,8 @@ namespace Gekko {
         void NetworkStats(i32 player, GekkoNetworkStats* stats) override;
         bool HealthStats(GekkoHealthStats* stats) override;   // [PovertyCaster #233]
 
+        void RollbackStats(GekkoRollbackStats* stats) override;
+
         void NetworkPoll() override;
 
         bool StartRecording(bool save_initial_state, bool disable_compression) override;
@@ -148,6 +150,14 @@ namespace Gekko {
         void SessionIntegrityCheck();
 
 	private:
+        struct RollbackCounters {
+            u32 count = 0;
+            u32 last_frames = 0;
+            u32 max_frames = 0;
+            u32 stalls = 0;
+            u64 total_frames = 0;
+        };
+
 		bool _started;
 
 		Frame _last_saved_frame;
@@ -226,5 +236,7 @@ namespace Gekko {
         u32 _checksum_captures;
 
         Frame _last_checksum_capture;
+
+        RollbackCounters _rollback_stats;
 	};
 }

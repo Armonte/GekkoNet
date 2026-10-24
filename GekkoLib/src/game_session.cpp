@@ -20,6 +20,7 @@ Gekko::GameSession::GameSession()
     _checksum_captures = 0;
     _last_checksum_capture = GameInput::NULL_FRAME;
     _config = GekkoConfig();
+    _rollback_stats = RollbackCounters();
 }
 
 void Gekko::GameSession::Init(GekkoConfig* config)
@@ -27,6 +28,8 @@ void Gekko::GameSession::Init(GekkoConfig* config)
     _host = nullptr;
 
     _started = false;
+
+    _rollback_stats = RollbackCounters();
 
     // get given configs
     std::memcpy(&_config, config, sizeof(GekkoConfig));
@@ -330,7 +333,10 @@ GekkoGameEvent** Gekko::GameSession::UpdateSession(i32* count)
         CaptureSpectatorState();
 
         // then advance the session
-        if (!ShouldStallAdvance() && _game_events.AddAdvanceEvent(_sync, false, _runahead_frames > 0)) {
+        if (ShouldStallAdvance() || !_game_events.AddAdvanceEvent(_sync, false, _runahead_frames > 0)) {
+            _rollback_stats.stalls++;
+        }
+        else {
             if (!_config.limited_saving) {
                 _game_events.AddSaveEvent(_sync, _storage, &_last_saved_frame);
             }
@@ -359,15 +365,16 @@ f32 Gekko::GameSession::FramesAhead()
         return 0.f;
     }
 
-    f32 sum = 0.f;
-    i32 count = 0;
+    bool found = false;
+    f32 ahead = 0.f;
     for (auto& remote : _msg.remotes) {
         if (remote->GetStatus() == Connected) {
-            sum += remote->adv_history.GetAverageAdvantage();
-            count++;
+            const f32 adv = remote->adv_history.GetAverageAdvantage();
+            ahead = found ? std::max(ahead, adv) : adv;
+            found = true;
         }
     }
-    return count > 0 ? sum / (f32)count : 0.f;
+    return ahead;
 }
 
 // [PovertyCaster #233] This session DOES cross-peer health checking -> true, with real counts.
@@ -405,6 +412,16 @@ void Gekko::GameSession::NetworkStats(i32 player, GekkoNetworkStats* stats)
             }
         }
     }
+}
+
+void Gekko::GameSession::RollbackStats(GekkoRollbackStats* stats)
+{
+    stats->total_count = _rollback_stats.count;
+    stats->last_frames = _rollback_stats.last_frames;
+    stats->avg_frames = _rollback_stats.count > 0
+        ? (f32)_rollback_stats.total_frames / (f32)_rollback_stats.count : 0.f;
+    stats->max_frames = _rollback_stats.max_frames;
+    stats->total_stalls = _rollback_stats.stalls;
 }
 
 void Gekko::GameSession::NetworkPoll()
@@ -1001,6 +1018,12 @@ void Gekko::GameSession::HandleRollback()
         CaptureChecksumState(frame);
         _sync.IncrementFrame();
     }
+
+    const u32 resimulated = (u32)(current - sync_frame - 1);
+    _rollback_stats.count++;
+    _rollback_stats.last_frames = resimulated;
+    _rollback_stats.max_frames = std::max(_rollback_stats.max_frames, resimulated);
+    _rollback_stats.total_frames += resimulated;
 
     // clear the marked mispredictions up to this point in the input buffer
     _sync.ClearIncorrectFramesUpTo(current);

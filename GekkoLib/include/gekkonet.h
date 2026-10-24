@@ -241,6 +241,13 @@ typedef struct GekkoHealthStats {
     unsigned int abstained_both;        // neither side had an opinion — nothing to compare
     unsigned int abstained_one_sided;   // exactly one side did; per #112 that is itself a divergence
 } GekkoHealthStats;
+typedef struct GekkoRollbackStats {
+    unsigned int total_count;
+    unsigned int last_frames;
+    float avg_frames;
+    unsigned int max_frames;
+    unsigned int total_stalls;
+} GekkoRollbackStats;
 
 // Public Facing API
 
@@ -334,7 +341,7 @@ GEKKONET_API GekkoSessionEvent** gekko_session_events(GekkoSession* session, int
 // from "supported and zero" — the whole point of the counter is that a silent zero must not read as proof.
 GEKKONET_API bool gekko_health_stats(GekkoSession* session, GekkoHealthStats* stats);
 
-// the average amount of frames this session runs ahead of its remote players, input delays included.
+// the amount of frames this session runs ahead of its slowest remote player, input delays included.
 GEKKONET_API float gekko_frames_ahead(GekkoSession* session);
 
 // FM2K patch: highest frame whose inputs from ALL players were actually RECEIVED (never predicted).
@@ -360,6 +367,9 @@ GEKKONET_API unsigned gekko_discarded_unacked(GekkoSession* session);
 // last-received frame. A player whose value is BELOW out[0] is the one the session is waiting for, which
 // immediately separates "we are not sending" from "we are not receiving". Returns the count written.
 GEKKONET_API int gekko_stall_info(GekkoSession* session, int* out, int max);
+// copies the rollback stats of the session. total_count is the number of rollbacks so far and the frames are the ones resimulated per rollback.
+// total_stalls is the number of updates which could not advance because inputs were missing.
+GEKKONET_API void gekko_rollback_stats(GekkoSession* session, GekkoRollbackStats* stats);
 
 // sends and receives packets without advancing the session.
 GEKKONET_API void gekko_network_poll(GekkoSession* session);
