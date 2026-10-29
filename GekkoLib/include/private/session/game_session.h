@@ -218,6 +218,11 @@ namespace Gekko {
 
         StateEntry _health_state;
 
+        // limited saving: the confirmed frames saved since the last health check. Their saves' checksums are the
+        // session health (no extra save inside the re-simulation for a fixed health frame); both peers attest every
+        // confirmed frame they save and compare the frames both saved.
+        std::vector<Frame> _health_saved;
+
         static const Frame HEALTH_CHECK_INTERVAL = 16;
 
         // with limited saving, the confirmed frames a recording wants the checksum of.

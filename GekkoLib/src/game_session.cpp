@@ -564,6 +564,7 @@ void Gekko::GameSession::HandleSavingConfirmedFrame()
         _game_events.AddAdvanceEvent(_sync, true);
         if (frame == frame_to_save) {
             _game_events.AddSaveEvent(_sync, _storage, &_last_saved_frame);
+            _health_saved.push_back(frame);   // <= confirmed: its checksum is final
         }
         CaptureHealthState(frame);
         CaptureChecksumState(frame);
@@ -584,17 +585,29 @@ void Gekko::GameSession::SendSessionHealthCheck()
     u32 checksum = 0;
 
     if (_config.limited_saving) {
-        if (!_health_captured) {
-            SkipUnreachableHealthFrame();
+        // Kyanta (health on saves): the attestations are the checksums of the confirmed frames the session saved
+        // anyway (HandleRollback's frame_to_save, HandleSavingConfirmedFrame's), written by the save events the app
+        // ran after the last poll. The old fixed health frame (every HEALTH_CHECK_INTERVAL) needed a save of its own
+        // inside the re-simulation: a second full save in a third of the rollback ticks.
+        for (const Frame f : _health_saved) {
+            auto sav = _storage.GetState(f);
+            if (!sav || sav->frame != f || f <= _last_sent_healthcheck) {
+                continue;   // the slot was reused by a later save of the same update
+            }
+            const u32 cs = checksum_fn ? checksum_fn(checksum_user, f, sav->state.get(), sav->state_len) : sav->checksum;
+            _last_sent_healthcheck = f;
+            _msg.local_health[f] = cs;
+            _msg.SendSessionHealth(f, cs);
+            confirmed = f;
+        }
+        _health_saved.clear();
+        if (confirmed == GameInput::NULL_FRAME) {
             return;
         }
-
-        confirmed = _health_state.frame;
-        checksum = _health_state.checksum;
-
-        _health_captured = false;
-        _health_frame = confirmed + HEALTH_CHECK_INTERVAL;
-        SkipUnreachableHealthFrame();
+        for (auto iter = _msg.local_health.begin(); iter != _msg.local_health.end(); ) {
+            if (iter->first < (confirmed - 100)) iter = _msg.local_health.erase(iter); else ++iter;
+        }
+        return;
     }
     else {
         const Frame current = _sync.GetCurrentFrame();
@@ -682,6 +695,11 @@ void Gekko::GameSession::SendSessionHealthCheck()
 
 void Gekko::GameSession::CaptureHealthState(Frame frame)
 {
+    // Kyanta (health on saves): limited saving attests its saved confirmed frames (SendSessionHealthCheck); no
+    // separate health save
+    if (_config.limited_saving) {
+        return;
+    }
     if (!_config.desync_detection || !_config.limited_saving || _health_captured ||
         frame != _health_frame || frame > GetConfirmedFrame()) {
         return;
@@ -996,6 +1014,9 @@ void Gekko::GameSession::HandleRollback()
         _game_events.AddAdvanceEvent(_sync, true);
         if (!_config.limited_saving || frame == frame_to_save) {
             _game_events.AddSaveEvent(_sync, _storage, &_last_saved_frame);
+            if (_config.limited_saving) {
+                _health_saved.push_back(frame);   // frame_to_save <= the confirmed frame: final
+            }
         }
         CaptureHealthState(frame);
         CaptureChecksumState(frame);
