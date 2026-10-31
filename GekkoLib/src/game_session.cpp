@@ -667,6 +667,12 @@ void Gekko::GameSession::SendSessionHealthCheck()
         checksum = checksum_fn
             ? checksum_fn(checksum_user, confirmed, sav->state.get(), sav->state_len)
             : sav->checksum;
+        // Kyanta (lazy checksum off the game thread): the callback returns 0 while the frame's checksum is still being
+        // computed. Attest nothing now and keep _last_sent_healthcheck, so the next poll asks for the same frame again --
+        // both peers follow this rule, so they attest the same frames.
+        if (checksum_fn && checksum == 0) {
+            return;
+        }
     }
 
     _last_sent_healthcheck = confirmed;
