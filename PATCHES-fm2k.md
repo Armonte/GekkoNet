@@ -132,6 +132,16 @@ the retiring wanwan launcher calls them).
     API: `GekkoConfig.input_prediction_window` is `max_input_prediction_window` since upstream 0d491a4 (not a
     fork delta; PovertyCaster renamed its 3 uses).
 
+15. **N3: a DisconnectClaim is a witness, never an authority** (`backend.cpp` `OnDisconnectClaim`; PovertyCaster
+    sec-shared v3.5, DeepSeek sweep N3). `body->player` was never bound to the sender: in a 3+ player session any peer
+    could drop another player and feed that player's inputs (`AddInput(..., remote=true)`). Now the sender must be a
+    connected peer; a claim about a player still connected here is ignored (only that player's own silence or
+    DisconnectMsg drops it; a claim about the sender's own actor is the sender leaving); and the carried inputs are
+    never added to another player's queue -- a claim holding inputs we never received fails the session
+    (`HandleUnrecoverableGap`). Trade-off: the old catch-up of a dropped player's last few inputs from a peer that
+    received more of them is gone; that case now ends the session instead of trusting a third party's inputs.
+    2-player sessions are unaffected (no third party). No wire change.
+
 ## The canonical pin (from 2026-10-14)
 
 **`fm2k-l5-pin-2026-10-14`** = `fm2k-l4-pin-2026-10-14` + entry 14. All four superprojects move to it TOGETHER, in

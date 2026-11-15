@@ -1344,7 +1344,33 @@ void Gekko::MessageSystem::OnDisconnectClaim(NetAddress& addr, NetPacket& pkt)
         return;
     }
 
+    // [security N3, 2026-11-15] A CLAIM IS ONLY A WITNESS, NEVER AN AUTHORITY. The claim carries the claimer's word about ANOTHER
+    // player's last inputs; nothing ties `body->player` to the sender, so it is believed only as far as we can check it ourselves:
+    //   * the sender must be a CONNECTED peer of this session (its address hosts a connected remote actor);
+    //   * a claim about a player still connected HERE is ignored -- only that player's own silence (our disconnect timeout) or its
+    //     own DisconnectMsg drops it. A claim about the sender's own actor is the sender leaving (same as its DisconnectMsg);
+    //   * the carried inputs are NEVER fed into another player's queue. If the claimer holds more of that player's inputs than we
+    //     do, we cannot verify them, so the gap is unrecoverable (the session fails) -- failing beats simulating forged inputs.
+    bool senderConnected = false, senderOwnsClaimed = false;
+    for (auto& peer : remotes) {
+        if (!peer->address.Equals(addr)) {
+            continue;
+        }
+        if (peer->GetStatus() == Connected) {
+            senderConnected = true;
+        }
+        if (peer->handle == body->player) {
+            senderOwnsClaimed = true;
+        }
+    }
+    if (!senderConnected && !senderOwnsClaimed) {
+        return;
+    }
+
     if (plyr->GetStatus() != Disconnected) {
+        if (!senderOwnsClaimed) {
+            return;   // a third party's word cannot drop a player we still hear
+        }
         MarkActorDisconnected(plyr);
     }
 
@@ -1355,35 +1381,14 @@ void Gekko::MessageSystem::OnDisconnectClaim(NetAddress& addr, NetPacket& pkt)
         }
     }
 
-    if (body->last_frame <= plyr->disconnect_frame) {
+    // the sender leaving: what it did not send us of its own inputs is settled by the disconnect exchange, not by this packet.
+    if (senderOwnsClaimed || body->last_frame <= plyr->disconnect_frame) {
         return;
     }
 
-    // a raise this late may touch frames the session already confirmed,
-    // failing the session beats silently drifting apart from the other peers.
-    if (TimeSinceEpoch() - plyr->last_claim_raise_time >= NetStats::DISCONNECT_CLAIM_HOLD) {
-        HandleUnrecoverableGap();
-        return;
-    }
-
-    // the peer holds more inputs than we do, catch up using the carried inputs.
-    const Frame next = _net_player_queue[body->player].last_added_input + 1;
-
-    if (next < body->start_frame) {
-        // the gap cant be bridged, the local session cant stay in agreement.
-        HandleUnrecoverableGap();
-        return;
-    }
-
-    for (Frame frame = std::max(next, body->start_frame); frame <= body->last_frame; frame++) {
-        u8* input = &body->inputs[(size_t)(frame - body->start_frame) * _input_size];
-        AddInput(frame, body->player, input, true);
-    }
-
-    plyr->disconnect_frame = _net_player_queue[body->player].last_added_input;
-    plyr->last_claim_raise_time = TimeSinceEpoch();
-    // announce the raised claim right away so the exchange settles quickly.
-    plyr->last_claim_sent_time = 0;
+    // the claimer says it holds inputs we never received. They cannot be verified (the claimed player is gone and the claimer is not
+    // that player), so they are not used: the local session cant stay in agreement with them, fail it.
+    HandleUnrecoverableGap();
 }
 
 void Gekko::MessageSystem::SendPendingSpectatorStates(GekkoNetAdapter* host)
