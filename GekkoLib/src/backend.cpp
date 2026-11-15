@@ -617,19 +617,6 @@ void Gekko::MessageSystem::SetSpectatorState(
     }
 }
 
-bool Gekko::MessageSystem::TakeSpectatorState(Frame& frame, std::vector<u8>& state)
-{
-    if (!_incoming_spectator_state.ready) {
-        return false;
-    }
-
-    frame = _incoming_spectator_state.frame;
-    state = _incoming_spectator_state.state;
-    _incoming_spectator_state.ready = false;
-    _incoming_spectator_state.taken = true;
-    return true;
-}
-
 void Gekko::MessageSystem::SetDisconnectTimeout(u32 timeout)
 {
     _disconnect_timeout = timeout;
@@ -1271,90 +1258,14 @@ void Gekko::MessageSystem::OnNetworkHealth(NetAddress& addr, NetPacket& pkt)
 
 void Gekko::MessageSystem::OnSpectatorState(NetAddress& addr, NetPacket& pkt)
 {
-    auto body = std::get_if<SpectatorStateMsg>(&pkt.body);
-
-    if (!_accept_spectator_state || !body || _state_size == 0 || body->total_size == 0 ||
-        body->total_size > _state_size || body->state.empty() ||
-        body->offset % SPECTATOR_STATE_CHUNK_SIZE != 0 ||
-        body->offset >= body->total_size ||
-        body->state.size() > SPECTATOR_STATE_CHUNK_SIZE ||
-        body->state.size() > body->total_size - body->offset) {
-        return;
-    }
-
-    const u32 chunk_count =
-        1 + (body->total_size - 1) / SPECTATOR_STATE_CHUNK_SIZE;
-    const u32 chunk = body->offset / SPECTATOR_STATE_CHUNK_SIZE;
-    const u32 expected_size = std::min(
-        SPECTATOR_STATE_CHUNK_SIZE,
-        body->total_size - body->offset
-    );
-
-    if (chunk >= chunk_count || body->state.size() != expected_size) {
-        return;
-    }
-
-    auto& incoming = _incoming_spectator_state;
-    if (incoming.active && body->frame < incoming.frame) {
-        return;
-    }
-
-    if (incoming.active && body->frame == incoming.frame &&
-        body->total_size != incoming.total_size) {
-        return;
-    }
-
-    if (!incoming.active || body->frame > incoming.frame) {
-        incoming.active = true;
-        incoming.ready = false;
-        incoming.taken = false;
-        incoming.frame = body->frame;
-        incoming.total_size = body->total_size;
-        incoming.received_chunks = 0;
-        incoming.state.resize(body->total_size);
-        incoming.chunks.assign(chunk_count, false);
-    }
-
-    if (!incoming.chunks[chunk]) {
-        std::memcpy(incoming.state.data() + body->offset, body->state.data(), body->state.size());
-        incoming.chunks[chunk] = true;
-        incoming.received_chunks++;
-    }
-
-    if (incoming.received_chunks != incoming.chunks.size()) {
-        return;
-    }
-
-    if (!incoming.taken) {
-        incoming.ready = true;
-
-        // Inputs after the snapshot must be accepted as a new sequential stream.
-        for (auto& queue : _net_player_queue) {
-            queue.inputs.clear();
-            queue.last_added_input = incoming.frame;
-        }
-    }
-
-    _pending_output.push(std::make_unique<NetData>());
-    auto& message = _pending_output.back();
-    message->addr.Copy(&addr);
-    message->pkt.header.type = SpectatorStateAck;
-    message->pkt.header.magic = 0;
-    for (auto& player : remotes) {
-        if (player->address.Equals(addr)) {
-            message->pkt.header.magic = player->session_magic;
-            break;
-        }
-    }
-
-    if (message->pkt.header.magic == 0) {
-        _pending_output.pop();
-        return;
-    }
-
-    SpectatorStateAckMsg ack = {};
-    ack.frame = incoming.frame;
-    message->pkt.body = ack;
+    // SECURITY (PovertyCaster Phase 0, 2026-11-15; CRITIQUE R9): the RECEIVE side of GekkoNet's spectator state transfer is
+    // compiled out. It reassembled a peer's state bytes and SpectatorSession handed them to the game as a GekkoLoadEvent --
+    // a raw load() of foreign state, the class PovertyCaster is removing everywhere (viewers rebuild from a setup record +
+    // inputs; host state is only ever compared as a checksum). PovertyCaster never creates a GekkoSpectateSession
+    // (SessionDriver.cpp creates GameSession / StressSession only), so this was dormant; it is now absent rather than gated.
+    // The message type stays in net.h so the wire format is unchanged; its payload is dropped unread and never acked.
+    (void)addr;
+    (void)pkt;
 }
 
 void Gekko::MessageSystem::OnSpectatorStateAck(NetAddress& addr, NetPacket& pkt)

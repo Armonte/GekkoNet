@@ -88,12 +88,6 @@ namespace Gekko {
 
         ReplaySystem _replay;
 
-        bool _spectator_state_pending;
-
-        Frame _spectator_state_frame;
-
-        std::vector<u8> _spectator_state;
-
         // a spectator does not save on its own, it saves the frames a recording checksums.
         StateEntry _checksum_state;
 

@@ -179,7 +179,6 @@ namespace Gekko {
 
         void SetSpectatorState(Handle spectator, Frame frame, const u8* state, u32 state_size);
 
-        bool TakeSpectatorState(Frame& frame, std::vector<u8>& state);
 
 	public:
 		std::vector<std::unique_ptr<Player>> locals;
@@ -303,16 +302,6 @@ namespace Gekko {
         // input queue for spectator inputs
         NetInputQueue _net_spectator_queue;
 
-        struct IncomingSpectatorState {
-            bool active = false;
-            bool ready = false;
-            bool taken = false;
-            Frame frame = GameInput::NULL_FRAME;
-            u32 total_size = 0;
-            u32 received_chunks = 0;
-            std::vector<u8> state;
-            std::vector<bool> chunks;
-        } _incoming_spectator_state;
 
         struct PendingDisconnect {
             NetAddress address;
