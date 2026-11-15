@@ -1128,8 +1128,14 @@ void Gekko::GameSession::HandleReceivedInputs()
             // measured on MBAA at NETSIM 80,15,1, FA > +0.5 on 22-24% of samples on BOTH peers, < -0.5 on
             // 1-3%, and the session ran at 59.35 fps. Sampling at arrival makes the two terms the same
             // measurement taken from opposite ends, which is what the halved difference assumes.
+            // + local_delay, the SAME sign as the ack above (and as the pre-arrival per-frame sample). The peer's ack for
+            // our frame i is (its current - i + its delay); the mirror measurement here is (our current - its last frame
+            // + our delay). With "- local_delay" both peers read -delay as a common-mode offset (PovertyCaster 2026-11-15:
+            // EnEins at delay 2 showed p0 -3 and p1 -1.4, both "behind"), so the ahead peer's reading sat inside the
+            // stretch deadband and the rift was never corrected. Measured red/green in PC tests/rift_netsim
+            // (frames_ahead_symmetric_at_input_delay).
             if (last_added >= last_recv) {
-                const i8 arrival_adv = (i8)(current_frame - last_added - local_delay);
+                const i8 arrival_adv = (i8)(current_frame - last_added + local_delay);
                 remote->adv_history.SetLocalAdvantage(arrival_adv);
             }
         }
