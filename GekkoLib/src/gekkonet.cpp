@@ -87,6 +87,11 @@ void gekko_set_forced_rollback(GekkoSession* session, unsigned char depth)
     session->SetForcedRollback(depth);
 }
 
+bool gekko_force_rollback_from(GekkoSession* session, int frame)
+{
+    return session ? session->ForceRollbackFrom(frame) : false;
+}
+
 void gekko_set_runahead(GekkoSession* session, unsigned char runahead)
 {
     session->SetRunahead(runahead);

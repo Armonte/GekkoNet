@@ -142,6 +142,14 @@ the retiring wanwan launcher calls them).
     received more of them is gone; that case now ends the session instead of trusting a third party's inputs.
     2-player sessions are unaffected (no third party). No wire change.
 
+16. **One-shot `gekko_force_rollback_from(session, frame)`** (`gekkonet.h`, `gekkonet.cpp`, `session.h`,
+    `game_session.{h,cpp}` `ForceRollbackFrom` + `HandleRollback`; PovertyCaster `docs/design/BATTLE_ATTACH_NO_WAIT.md`
+    step 1). The next update treats `frame` as the lowest mispredicted frame: Load(frame-1), Advance frame..current-1
+    (rolling_back) with the recorded inputs, a Save after each; merges with a real correction into one transaction
+    from the lower frame; sets the #231 attest-stale marker (the re-saves are expected to differ). Refuses (false)
+    when it cannot be honoured (not started, no state, limited saving, lockstep, frame out of range, save evicted).
+    Local API only, no wire change; unused until PovertyCaster's committed attach calls it.
+
 ## The canonical pin (from 2026-10-14)
 
 **`fm2k-l5-pin-2026-10-14`** = `fm2k-l4-pin-2026-10-14` + entry 14. All four superprojects move to it TOGETHER, in

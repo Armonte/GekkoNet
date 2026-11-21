@@ -260,6 +260,17 @@ GEKKONET_API void gekko_set_local_delay(GekkoSession* session, int player, unsig
 // GekkoConfig::forced_rollback_depth can hold; 0 = off).
 GEKKONET_API void gekko_set_forced_rollback(GekkoSession* session, unsigned char depth);
 
+// [PovertyCaster attach-nowait] one-shot rollback: the NEXT gekko_update_session re-simulates from
+// `frame` as if it were the lowest mispredicted frame -- Load(frame - 1), then Advance(frame ..
+// current - 1, rolling_back = true) with the inputs on record and a Save after each, then the live
+// advance. Use it when the app changed what loading the state before `frame` yields (an attach base
+// re-offered after a late peer's catch-up). The load is NOT marked `forced` (its re-saves are expected
+// to differ). Several calls before an update keep the lowest frame; a real correction in the same update
+// merges into one transaction from the lower frame. Game sessions only. Returns false and queues nothing
+// when it cannot be honoured: not started, state_size 0, limited_saving, lockstep (window 0), frame < 0,
+// frame >= the current frame, or the save before `frame` already left the prediction-window ring.
+GEKKONET_API bool gekko_force_rollback_from(GekkoSession* session, int frame);
+
 // simulates the given amount of frames ahead every update and rewinds them
 // on the next one, which hides local input delay.
 GEKKONET_API void gekko_set_runahead(GekkoSession* session, unsigned char runahead);

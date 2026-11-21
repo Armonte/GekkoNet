@@ -88,6 +88,45 @@ void Gekko::GameSession::SetForcedRollback(u8 depth)
     _forced_rollback_depth = depth > _forced_rollback_max ? _forced_rollback_max : depth;
 }
 
+// [PovertyCaster attach-nowait] One-shot rollback request (gekko_force_rollback_from). The app has
+// changed what a load of the state before `frame` will produce (a late peer's attach base, re-offered
+// after its catch-up), so every frame from `frame` up to the current one must be re-simulated and
+// re-saved. It is folded into the NEXT HandleRollback as if `frame` were the lowest mispredicted frame:
+// one Load(frame-1), Advance(frame .. current-1, rolling_back) with the inputs on record, a Save after
+// each, then the update's live advance. Several requests before that update keep the lowest frame.
+//
+// Refused (false, nothing queued) whenever the transaction could not be honoured, so a caller can never
+// believe a re-sim happened that did not: not started, no state, limited saving, lockstep (no storage),
+// frame < 0, frame >= current (nothing to re-simulate), or the save labelled frame-1 already evicted
+// from the prediction-window ring.
+bool Gekko::GameSession::ForceRollbackFrom(i32 frame)
+{
+    if (!ForceRollbackTargetValid(frame)) {
+        return false;
+    }
+    if (_force_rollback_from == GameInput::NULL_FRAME || frame < _force_rollback_from) {
+        _force_rollback_from = frame;
+    }
+    return true;
+}
+
+bool Gekko::GameSession::ForceRollbackTargetValid(Frame frame)
+{
+    if (!_started || _config.state_size == 0 || _config.limited_saving || IsLockstepActive()) {
+        return false;
+    }
+    // the initial save (the state before frame 0, labelled -1) must exist before anything can be loaded
+    if (_last_saved_frame == GameInput::NULL_FRAME - 1) {
+        return false;
+    }
+    const Frame current = _sync.GetCurrentFrame();
+    if (frame < 0 || frame >= current) {
+        return false;
+    }
+    StateEntry* entry = _storage.GetState(frame - 1);
+    return entry != nullptr && entry->frame == frame - 1;
+}
+
 void Gekko::GameSession::SetLocalDelay(i32 player, u8 delay)
 {
     for (u32 i = 0; i < _msg.locals.size(); i++) {
@@ -916,12 +955,29 @@ void Gekko::GameSession::HandleRollback()
     }
 
     _attest_stale_from = GameInput::NULL_FRAME;   // [PovertyCaster #231] reset each poll
-    if (!RollbackPending()) {
+
+    // [PovertyCaster attach-nowait] consume a one-shot request (ForceRollbackFrom). Re-validated here:
+    // the request is honoured only if its save is still addressable, otherwise it is dropped -- a load
+    // of an evicted ring slot would hand the app a different frame's state.
+    Frame forced = _force_rollback_from;
+    _force_rollback_from = GameInput::NULL_FRAME;
+    if (forced != GameInput::NULL_FRAME && !ForceRollbackTargetValid(forced)) {
+        forced = GameInput::NULL_FRAME;
+    }
+
+    const bool real = RollbackPending();
+    if (!real && forced == GameInput::NULL_FRAME) {
         return;
     }
 
     current = _sync.GetCurrentFrame();
-    const Frame min = _sync.GetMinIncorrectFrame();
+    // a real correction and a forced request in the same poll share ONE transaction from the lower frame.
+    // The forced re-save differs from _storage (the app changed the base), so the #231 marker below
+    // applies to it exactly as to a correction -- unlike HandleForcedRollback, whose replay is identical.
+    Frame min = real ? _sync.GetMinIncorrectFrame() : forced;
+    if (real && forced != GameInput::NULL_FRAME) {
+        min = std::min(min, forced);
+    }
 
     // [PovertyCaster #231] Everything from the rollback's resim start upward is about to be RE-SAVED by
     // events the app has not executed yet. SendSessionHealthCheck runs later in THIS SAME poll and reads

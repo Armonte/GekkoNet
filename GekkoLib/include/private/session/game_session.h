@@ -23,6 +23,8 @@ namespace Gekko {
 
         void SetForcedRollback(u8 depth) override;
 
+        bool ForceRollbackFrom(i32 frame) override;
+
         void SetRunahead(u8 runahead) override;
 
         void SetInputPredictionWindow(u8 window) override;
@@ -113,6 +115,10 @@ namespace Gekko {
         // Harness: synthesize the depth-N rollback transaction (see GekkoConfig::forced_rollback_depth).
         void HandleForcedRollback();
 
+        // [PovertyCaster attach-nowait] the save HandleRollback must load to re-simulate from `frame`
+        // exists in _storage (labelled frame-1) and `frame` is below the current frame.
+        bool ForceRollbackTargetValid(Frame frame);
+
         // true when this update's live advance of the current frame will run
         bool CanAdvanceFrontier();
 
@@ -158,6 +164,10 @@ namespace Gekko {
 
         u8 _forced_rollback_depth;      // 0 = off
         u8 _forced_rollback_max;        // what the storage can hold
+
+        // [PovertyCaster attach-nowait] pending one-shot rollback (gekko_force_rollback_from): the lowest
+        // requested frame, consumed by the next HandleRollback. NULL_FRAME = none pending.
+        Frame _force_rollback_from = GameInput::NULL_FRAME;
 
         Frame _last_sent_healthcheck;
         // [PovertyCaster #231] Frames at/above this were re-simulated by a rollback QUEUED THIS POLL and

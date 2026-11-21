@@ -8,6 +8,9 @@ struct GekkoSession {
     virtual void Init(GekkoConfig* config) = 0;
     virtual void SetLocalDelay(i32 player, u8 delay) {}
     virtual void SetForcedRollback(u8 depth) {}
+    // [PovertyCaster attach-nowait] one-shot rollback request; see gekko_force_rollback_from. Only a
+    // game session keeps the saves it needs, so every other session kind refuses (false), never no-ops.
+    virtual bool ForceRollbackFrom(i32 frame) { (void)frame; return false; }
     virtual void SetRunahead(u8 runahead) {}
     virtual void SetInputPredictionWindow(u8 window) {}
     virtual void SetNetAdapter(GekkoNetAdapter* adapter) {}
