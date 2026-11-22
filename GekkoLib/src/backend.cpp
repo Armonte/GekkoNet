@@ -6,6 +6,27 @@
 
 #include "zpp/zpp_bits.h"
 
+#include <cstdio>
+
+namespace {
+GekkoLogCallback g_log_callback = nullptr;
+}
+
+void gekko_set_log_callback(GekkoLogCallback callback)
+{
+    g_log_callback = callback;
+}
+
+void Gekko::Log(const char* message)
+{
+    if (g_log_callback) {
+        g_log_callback(message);
+    }
+    else {
+        printf("%s\n", message);
+    }
+}
+
 Gekko::MessageSystem::MessageSystem()
 {
     _num_players = 0;
@@ -146,7 +167,7 @@ void Gekko::MessageSystem::HandleData(GekkoNetAdapter* host, GekkoNetResult** da
         zpp::bits::in in(_bin_buffer, zpp::bits::alloc_limit<0x10000>{});
 
         if (failure(in(pkt.header, pkt.body))) {
-            printf("failed to deserialize packet\n");
+            Log("failed to deserialize packet");
         }
         else {
             ParsePacket(addr, pkt, res->data_len);
@@ -664,7 +685,7 @@ void Gekko::MessageSystem::SendDataToAll(NetData* pkt, GekkoNetAdapter* host, bo
     zpp::bits::out body_out(body_buffer);
 
     if (failure(body_out(pkt->pkt.body))) {
-        printf("failed to serialize packet body\n");
+        Log("failed to serialize packet body");
         return;
     }
 
@@ -677,7 +698,7 @@ void Gekko::MessageSystem::SendDataToAll(NetData* pkt, GekkoNetAdapter* host, bo
 
             zpp::bits::out out(_bin_buffer);
             if (failure(out(pkt->pkt.header))) {
-                printf("failed to serialize packet header\n");
+                Log("failed to serialize packet header");
                 continue;
             }
 
@@ -703,7 +724,7 @@ void Gekko::MessageSystem::SendDataTo(NetData* pkt, GekkoNetAdapter* host)
 
     zpp::bits::out out(_bin_buffer);
     if (failure(out(pkt->pkt.header, pkt->pkt.body))) {
-        printf("failed to serialize packet\n");
+        Log("failed to serialize packet");
         return;
     }
 
@@ -754,7 +775,7 @@ void Gekko::MessageSystem::ParsePacket(NetAddress& addr, NetPacket& pkt, u32 pac
             OnSyncRequest(addr, pkt);
         }
         else {
-            printf("dropped packet!\n");
+            Log("dropped packet!");
         }
     }
     else {

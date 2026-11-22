@@ -229,6 +229,12 @@ GEKKONET_API float gekko_frames_ahead(GekkoSession* session);
 // copies the network stats gathered for a remote actor or spectator.
 GEKKONET_API void gekko_network_stats(GekkoSession* session, int player, GekkoNetworkStats* stats);
 
+// Diagnostics ("dropped packet", "failed to deserialize packet", ...): without a callback they are printed to stdout as
+// before; with one, every message goes to it instead (a host can route them to its own log or rate-limit them: one
+// console write per hostile datagram is a cheap denial of service). nullptr restores stdout.
+typedef void (*GekkoLogCallback)(const char* message);
+GEKKONET_API void gekko_set_log_callback(GekkoLogCallback callback);
+
 // sends and receives packets without advancing the session.
 GEKKONET_API void gekko_network_poll(GekkoSession* session);
 

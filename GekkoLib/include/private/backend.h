@@ -16,6 +16,9 @@
 #include <map>
 
 namespace Gekko {
+    // the library's diagnostics: to the host's callback (gekko_set_log_callback), else stdout
+    void Log(const char* message);
+
 
     enum PlayerStatus {
         Initiating,
