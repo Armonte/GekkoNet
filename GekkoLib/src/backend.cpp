@@ -903,6 +903,12 @@ void Gekko::MessageSystem::OnInputs(NetAddress& addr, NetPacket& pkt)
     const u32 input_count = body->input_count;
 
     if (is_spectator) {
+        // only the session's host relays the confirmed input stream: a spectator's remote actor is the host. Inputs from any
+        // other address that happens to carry the session magic are dropped.
+        if (GetRemoteHandlesForAddress(&addr).empty()) {
+            return;
+        }
+
         if ((u64)input_count * _num_players * _input_size > body->inputs.size()) {
             return;
         }
