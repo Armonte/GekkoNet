@@ -152,14 +152,68 @@ void Gekko::MessageSystem::SendPendingOutput(GekkoNetAdapter* host)
 	}
 }
 
+namespace {
+// Every datagram ends with a crc32 (IEEE, little endian) of the bytes before it: a datagram corrupted on the way (UDP's own
+// checksum is optional on IPv4, and a bad or stripping middlebox defeats it) fails it and is dropped before decoding,
+// instead of being played as a real input. Not a MAC: it stops corruption, not a sender who knows the format.
+constexpr u32 CRC_TRAILER_BYTES = 4;
+
+u32 Crc32(const u8* data, size_t size)
+{
+    static u32 table[256];
+    static bool ready = false;
+    if (!ready) {
+        for (u32 i = 0; i < 256; i++) {
+            u32 c = i;
+            for (int k = 0; k < 8; k++) {
+                c = (c & 1) ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+            }
+            table[i] = c;
+        }
+        ready = true;
+    }
+    u32 c = 0xFFFFFFFFu;
+    for (size_t i = 0; i < size; i++) {
+        c = table[(c ^ data[i]) & 0xFF] ^ (c >> 8);
+    }
+    return ~c;
+}
+
+void AppendCrc(std::vector<u8>& buffer)
+{
+    const u32 c = Crc32(buffer.data(), buffer.size());
+    for (int k = 0; k < 4; k++) {
+        buffer.push_back((u8)(c >> (8 * k)));
+    }
+}
+
+bool CheckCrc(const u8* data, u32 size)
+{
+    if (size <= CRC_TRAILER_BYTES) {
+        return false;
+    }
+    const u8* t = data + size - CRC_TRAILER_BYTES;
+    const u32 c = (u32)t[0] | ((u32)t[1] << 8) | ((u32)t[2] << 16) | ((u32)t[3] << 24);
+    return c == Crc32(data, size - CRC_TRAILER_BYTES);
+}
+}
+
 void Gekko::MessageSystem::HandleData(GekkoNetAdapter* host, GekkoNetResult** data, u32 length)
 {
     for (u32 i = 0; i < length; i++) {
         auto res = data[i];
         auto addr = NetAddress(res->addr.data, res->addr.size);
 
+        if (!CheckCrc((const u8*)res->data, res->data_len)) {
+            Log("dropped a corrupted datagram (crc32 trailer)");
+            host->free_data(res->addr.data);
+            host->free_data(res->data);
+            host->free_data(res);
+            continue;
+        }
+
         _bin_buffer.clear();
-        _bin_buffer.insert(_bin_buffer.begin(), (u8*)res->data, (u8*)res->data + res->data_len);
+        _bin_buffer.insert(_bin_buffer.begin(), (u8*)res->data, (u8*)res->data + res->data_len - CRC_TRAILER_BYTES);
 
         NetPacket pkt;
         // [security] cap every length-prefixed allocation at a datagram's size: zpp resizes a vector BEFORE checking the
@@ -170,7 +224,7 @@ void Gekko::MessageSystem::HandleData(GekkoNetAdapter* host, GekkoNetResult** da
             Log("failed to deserialize packet");
         }
         else {
-            ParsePacket(addr, pkt, res->data_len);
+            ParsePacket(addr, pkt, res->data_len - CRC_TRAILER_BYTES);
         }
 
         // cleanup :)
@@ -707,6 +761,7 @@ void Gekko::MessageSystem::SendDataToAll(NetData* pkt, GekkoNetAdapter* host, bo
                 body_buffer.begin(),
                 body_buffer.end()
             );
+            AppendCrc(_bin_buffer);
 
             auto addr = GekkoNetAddress();
             addr.data = actor->address.GetAddress();
@@ -727,6 +782,7 @@ void Gekko::MessageSystem::SendDataTo(NetData* pkt, GekkoNetAdapter* host)
         Log("failed to serialize packet");
         return;
     }
+    AppendCrc(_bin_buffer);
 
     auto addr = GekkoNetAddress();
     addr.data = pkt->addr.GetAddress();
