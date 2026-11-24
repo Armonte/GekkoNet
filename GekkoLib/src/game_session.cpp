@@ -1165,14 +1165,13 @@ void Gekko::GameSession::HandleReceivedInputs()
             auto& input_q = _msg.GetNetPlayerQueue(handle);
             const Frame min_frame = last_added - (i32)input_q.size() + 1;
             const Frame current_frame = _sync.GetCurrentFrame();
-            const Frame local_delay = (Frame)GetMinLocalDelay();
             for (int i = last_recv; i <= last_added; i++) {
                 if (i >= min_frame) {
                     int current_idx = i - min_frame;
                     u8* input = input_q[current_idx].get();
                     _sync.AddRemoteInput(handle, input, i);
-                    // + delay: each peer then rolls back latency - own delay
-                    const i8 local_adv = (i8)(current_frame - i + local_delay);
+                    // NO delay term, and the SAME formula as the arrival sample below (see the 2026-11-24 note there).
+                    const i8 local_adv = (i8)(current_frame - i);
                     _msg.SendInputAck(handle, i, local_adv);
                 }
             }
@@ -1184,14 +1183,23 @@ void Gekko::GameSession::HandleReceivedInputs()
             // measured on MBAA at NETSIM 80,15,1, FA > +0.5 on 22-24% of samples on BOTH peers, < -0.5 on
             // 1-3%, and the session ran at 59.35 fps. Sampling at arrival makes the two terms the same
             // measurement taken from opposite ends, which is what the halved difference assumes.
-            // + local_delay, the SAME sign as the ack above (and as the pre-arrival per-frame sample). The peer's ack for
-            // our frame i is (its current - i + its delay); the mirror measurement here is (our current - its last frame
-            // + our delay). With "- local_delay" both peers read -delay as a common-mode offset (PovertyCaster 2026-11-15:
-            // EnEins at delay 2 showed p0 -3 and p1 -1.4, both "behind"), so the ahead peer's reading sat inside the
-            // stretch deadband and the rift was never corrected. Measured red/green in PC tests/rift_netsim
-            // (frames_ahead_symmetric_at_input_delay).
+            // [PovertyCaster 2026-11-15] THE ACK AND THIS SAMPLE MUST USE THE SAME FORMULA. They once differed in the
+            // sign of the delay term (+ in the ack, - here), so both peers read -delay as a common-mode offset (EnEins
+            // at delay 2 showed p0 -3 and p1 -1.4, both "behind"), the ahead peer's reading sat inside the stretch
+            // deadband and the rift was never corrected. PC tests/rift_netsim frames_ahead_symmetric_at_input_delay.
+            //
+            // [PovertyCaster 2026-11-24] ...and the shared formula carries NO delay term at all. With "+ own delay" in
+            // both (the 11-15 fix), A's local term is (cA-cB) + L + dA - dB and the ack from B is (cB-cA) + L + dB - dA,
+            // so FramesAhead = (cA-cB) + (dA-dB): the WHOLE delay gap read as lead, and the controller parked the pair
+            // where each peer rolls back L - its own delay, i.e. the low-delay peer eats the entire gap in rollbacks.
+            // Tester: EnEins self-match at delays 2 vs 0, one side ~1.5-3.5 frames ahead forever, rollbacks never
+            // stopped, and which side depended on who stalled. Without the term FA = (cA-cB) + (dA-dB)/2, which is
+            // zero exactly where both peers roll back the same L - (dA+dB)/2. Equal delays are unchanged (the term
+            // cancelled). Measured red/green in PC tests/rift_netsim frames_ahead_unbiased_at_unequal_input_delay
+            // (delays 2/0, 0/2, 4/1 at rtt 0 and 80: bias vs the equal-rollback offset was the delay gap / 2).
+            // Do NOT re-add a delay term to only ONE of the two sites: that is the 11-15 common-mode bug again.
             if (last_added >= last_recv) {
-                const i8 arrival_adv = (i8)(current_frame - last_added + local_delay);
+                const i8 arrival_adv = (i8)(current_frame - last_added);
                 remote->adv_history.SetLocalAdvantage(arrival_adv);
             }
         }
